@@ -17,8 +17,9 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 
-from lib import blog, careers, edgar, github, news
+from lib import edgar
 from lib.careers import token_candidates
+from lib.registry import SOURCE_ORDER, SOURCES, Ctx
 from lib.window import make_window, parse_dt
 
 
@@ -34,10 +35,9 @@ def build_footer(report: dict) -> str:
     """A verbatim coverage line the synthesized report must pass through (à la last30days).
     `—` = not applicable (routed off / disabled by flag) and excluded from the denominator;
     `⚠` = probed but errored; `✗` = probed and empty; `✓ N` = active with count."""
-    order = ["careers", "news", "blog", "edgar", "github"]
     s = report["sources"]
     parts, attempted, active = [], 0, 0
-    for k in order:
+    for k in SOURCE_ORDER:
         if k not in s or s[k].get("status") == "skipped":
             parts.append(f"{k} —")  # not run / routed off — not counted
             continue
@@ -67,32 +67,28 @@ def run(domain: str, name: str, today: date, use_gdelt=True, use_github=True,
         "ticker": cik_info["ticker"] if cik_info else None,
     }
 
-    orgs = token_candidates(domain, name)
-    tasks = {
-        "careers": lambda: careers.collect(domain, name, window),
-        "news": lambda: news.collect(name, window, use_gdelt=use_gdelt, keywords=keywords),
-        "blog": lambda: blog.collect(domain, window),
-        "edgar": lambda: edgar.collect(name, window, cik_info),
-    }
-    if use_github:
-        tasks["github"] = lambda: github.collect(orgs, window, domain)
+    ctx = Ctx(domain=domain, name=name, window=window, cik_info=cik_info,
+              orgs=token_candidates(domain, name), keywords=keywords,
+              use_gdelt=use_gdelt, use_github=use_github)
+    active_sources = [s for s in SOURCES if s.applies(ctx)]
 
     results = {}
-    with ThreadPoolExecutor(max_workers=len(tasks)) as pool:
-        futs = {pool.submit(fn): key for key, fn in tasks.items()}
+    with ThreadPoolExecutor(max_workers=max(1, len(active_sources))) as pool:
+        futs = {pool.submit(src.run, ctx): src.key for src in active_sources}
         for fut in futs:
             key = futs[fut]
             try:
                 results[key] = fut.result(timeout=40)
             except Exception as e:
-                results[key] = {"source": key, "status": "error", "error": str(e)}
+                results[key] = {"source": key, "status": "error",
+                                "error": str(e) or type(e).__name__}
 
     active = [k for k, v in results.items() if v.get("status") == "active"]
     report = {
         "window": window,
         "profile": profile,
         "sources_active": active,
-        "sources_total": len(tasks),
+        "sources_total": len(active_sources),
         "sources": results,
     }
     report["footer"] = build_footer(report)
@@ -117,6 +113,7 @@ def compact(report: dict) -> str:
             L.append(f"          - {_fmt_date(r.get('date'))} "
                      f"{r['title']} [{r.get('department') or ''}]")
     for key, label in (("blog", "LAUNCH/BLOG"), ("news", "NEWS"),
+                       ("status", "RISK/STATUS"), ("hackernews", "HN"),
                        ("edgar", "EDGAR"), ("github", "GITHUB")):
         v = s.get(key, {})
         if v.get("status") == "active":

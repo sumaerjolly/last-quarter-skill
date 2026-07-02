@@ -47,7 +47,9 @@ def _ashby(token):
 
 
 def _greenhouse(token):
-    code, data = fetch_json(f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs")
+    # ?content=true returns departments (fixes dept-null) + full JD content.
+    code, data = fetch_json(
+        f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs?content=true")
     jobs = (data or {}).get("jobs") if isinstance(data, dict) else None
     if not jobs:
         return None
@@ -58,7 +60,7 @@ def _greenhouse(token):
         "api_url": f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs",
         "jobs": [{
             "title": j.get("title"),
-            "department": None,  # needs ?content=true / departments endpoint
+            "department": ((j.get("departments") or [{}])[0] or {}).get("name"),
             "location": (j.get("location") or {}).get("name"),
             "url": j.get("absolute_url"),
             "date": j.get("first_published") or j.get("updated_at"),
