@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import os
+from collections import Counter
 
 from .http import fetch_json
+from .identity import registrable_domain
 from .window import bucket
 
 _HDRS = {"Accept": "application/vnd.github+json"}
@@ -11,19 +13,41 @@ if os.getenv("GITHUB_TOKEN"):
     _HDRS["Authorization"] = f"Bearer {os.environ['GITHUB_TOKEN']}"
 
 
-def collect(org_candidates: list[str], window: dict) -> dict:
-    org = None
-    repos = None
-    for cand in org_candidates:
-        code, data = fetch_json(
-            f"https://api.github.com/orgs/{cand}/repos?sort=pushed&per_page=15",
+def _resolve_org(candidates: list[str], domain: str):
+    """Find a GitHub org and VERIFY it belongs to the domain (org.blog host == domain).
+    Returns (org_login, repos, status). Prevents slug-squat matches like orgs/notion ->
+    an unrelated org 'Trove'. Returns status 'error' if the lookups hit a transport failure."""
+    want = registrable_domain(domain)
+    saw_response = False
+    for cand in candidates:
+        code, org = fetch_json(f"https://api.github.com/orgs/{cand}", headers=_HDRS)
+        if code == 0:
+            continue  # transport error on this candidate; try the next
+        saw_response = True
+        if code != 200 or not isinstance(org, dict):
+            continue  # 404 / rate-limited body
+        blog = registrable_domain(org.get("blog") or "")
+        if not (blog and want and blog == want):
+            continue  # org exists but is NOT verifiably this company's — refuse it
+        login = org.get("login") or cand
+        code2, repos = fetch_json(
+            f"https://api.github.com/orgs/{login}/repos?sort=pushed&per_page=15",
             headers=_HDRS)
-        if code == 200 and isinstance(data, list) and data:
-            org, repos = cand, data
-            break
+        if isinstance(repos, list) and repos:
+            return login, repos, "ok"
+    return None, None, ("error" if not saw_response else "empty")
+
+
+def collect(org_candidates: list[str], window: dict, domain: str) -> dict:
+    org, repos, status = _resolve_org(org_candidates, domain)
     if not repos:
+        if status == "error":
+            return {"source": "github", "status": "error",
+                    "error": "GitHub API unreachable",
+                    "note": "GitHub lookups failed (network/rate-limit) — not confirmed empty."}
         return {"source": "github", "status": "empty",
-                "note": "No public GitHub org matched — skip for non-dev companies."}
+                "note": "No GitHub org verifiably owned by this domain (org.blog must match) "
+                        "— skipped to avoid a wrong-entity match."}
     releases = []
     for repo in repos[:8]:
         name = repo.get("name")
@@ -38,7 +62,6 @@ def collect(org_candidates: list[str], window: dict) -> dict:
                 })
     releases.sort(key=lambda x: str(x["date"]), reverse=True)
 
-    from collections import Counter
     by_repo = Counter(r["repo"] for r in releases)
     # Auto-generated SDK repos publish dozens of version bumps → cadence, not launches.
     sdk_like = sum(n for repo, n in by_repo.items()

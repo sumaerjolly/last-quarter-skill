@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections import Counter
 
 from .http import fetch_json
+from .identity import brand_slug, norm_company
 from .window import bucket
 
 
@@ -52,6 +53,7 @@ def _greenhouse(token):
         return None
     return {
         "ats": "greenhouse", "token": token,
+        "company": (jobs[0].get("company_name") if jobs else None),
         "board_url": f"https://boards.greenhouse.io/{token}",
         "api_url": f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs",
         "jobs": [{
@@ -100,6 +102,17 @@ def collect(domain: str, name: str | None, window: dict) -> dict:
     if not board:
         return {"source": "careers", "status": "empty", "tried": tried, "signals": []}
 
+    # Ownership sanity check: if the board reports a company name (Greenhouse does) that
+    # shares no token with the requested name or domain slug, it may be a squatted slug.
+    board_company = board.get("company")
+    ownership_warn = None
+    if board_company:
+        bc = set(norm_company(board_company).split())
+        want = set(norm_company(name or "").split()) | {brand_slug(domain)}
+        if bc and want and not (bc & want):
+            ownership_warn = (f"ATS board company '{board_company}' shares no name token with "
+                              f"'{name}'/{brand_slug(domain)} — verify this board is theirs.")
+
     jobs = board["jobs"]
     in_window = [j for j in jobs if bucket(j["date"], window) == "in_window"]
     dept = Counter(j["department"] for j in in_window if j.get("department"))
@@ -108,6 +121,8 @@ def collect(domain: str, name: str | None, window: dict) -> dict:
         "status": "active",
         "ats": board["ats"],
         "token": board["token"],
+        "board_company": board_company,
+        "ownership_warning": ownership_warn,
         "board_url": board["board_url"],
         "api_url": board["api_url"],
         "listed_total": len(jobs),

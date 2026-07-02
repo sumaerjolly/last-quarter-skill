@@ -24,14 +24,17 @@ def _throttle(key: str, min_gap: float) -> None:
 
 
 def fetch(url: str, *, timeout: int = 12, headers: dict | None = None,
-          throttle_key: str | None = None, min_gap: float = 0.0) -> tuple[int, bytes]:
-    """GET a URL. Returns (status_code, body_bytes). Never raises on HTTP errors."""
+          throttle_key: str | None = None, min_gap: float = 0.0,
+          maxbytes: int | None = None) -> tuple[int, bytes]:
+    """GET a URL. Returns (status_code, body_bytes). Never raises on HTTP errors.
+    maxbytes: stop reading after N bytes (e.g. just the <head> for meta tags)."""
     if throttle_key:
         _throttle(throttle_key, min_gap)
     req = urllib.request.Request(url, headers={"User-Agent": UA, **(headers or {})})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.status, resp.read()
+            body = resp.read(maxbytes) if maxbytes else resp.read()
+            return resp.status, body
     except urllib.error.HTTPError as e:
         return e.code, e.read() if hasattr(e, "read") else b""
     except Exception:

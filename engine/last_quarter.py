@@ -31,18 +31,25 @@ _SYM = {"active": "✓", "empty": "✗", "error": "⚠", "skipped": "—"}
 
 
 def build_footer(report: dict) -> str:
-    """A verbatim coverage line the synthesized report must pass through (à la last30days)."""
+    """A verbatim coverage line the synthesized report must pass through (à la last30days).
+    `—` = not applicable (routed off / disabled by flag) and excluded from the denominator;
+    `⚠` = probed but errored; `✗` = probed and empty; `✓ N` = active with count."""
     order = ["careers", "news", "blog", "edgar", "github"]
     s = report["sources"]
-    parts = []
+    parts, attempted, active = [], 0, 0
     for k in order:
-        v = s.get(k, {})
+        if k not in s or s[k].get("status") == "skipped":
+            parts.append(f"{k} —")  # not run / routed off — not counted
+            continue
+        v = s[k]
         status = v.get("status", "empty")
-        sym = _SYM.get(status, "✗")
+        attempted += 1
+        if status == "active":
+            active += 1
         cnt = v.get("count", v.get("posted_in_window"))
-        parts.append(f"{k} {sym}{f' {cnt}' if status == 'active' and cnt is not None else ''}")
-    n, total = len(report["sources_active"]), report["sources_total"]
-    return (f"---\n✅ sources reported back — {n}/{total} active\n"
+        show = f" {cnt}" if status == "active" and cnt is not None else ""
+        parts.append(f"{k} {_SYM.get(status, '✗')}{show}")
+    return (f"---\n✅ sources reported back — {active}/{attempted} applicable\n"
             f"└─ {' · '.join(parts)}\n---")
 
 
@@ -52,9 +59,11 @@ def run(domain: str, name: str, today: date, use_gdelt=True, use_github=True,
 
     # Profile & route first: EDGAR ticker lookup decides public vs private.
     cik_info = edgar.lookup_cik(name)
+    # If the SEC ticker file failed to load, public/private is UNKNOWN — don't claim private.
+    public = None if edgar.tickers_ok() is False else bool(cik_info)
     profile = {
         "domain": domain, "name": name,
-        "public": bool(cik_info),
+        "public": public,
         "ticker": cik_info["ticker"] if cik_info else None,
     }
 
@@ -66,7 +75,7 @@ def run(domain: str, name: str, today: date, use_gdelt=True, use_github=True,
         "edgar": lambda: edgar.collect(name, window, cik_info),
     }
     if use_github:
-        tasks["github"] = lambda: github.collect(orgs, window)
+        tasks["github"] = lambda: github.collect(orgs, window, domain)
 
     results = {}
     with ThreadPoolExecutor(max_workers=len(tasks)) as pool:
@@ -92,16 +101,18 @@ def run(domain: str, name: str, today: date, use_gdelt=True, use_github=True,
 
 def compact(report: dict) -> str:
     w, p = report["window"], report["profile"]
+    prof = ("public " + (p["ticker"] or "") if p["public"]
+            else "unknown (SEC lookup failed)" if p["public"] is None else "private")
     L = [f"🗓  last-quarter · {p['name']} ({p['domain']})  ·  {w['start']} → {w['end']}",
-         f"    profile: {'public ' + (p['ticker'] or '') if p['public'] else 'private'}"
-         f"  ·  sources active: {len(report['sources_active'])}/{report['sources_total']}"
-         f" ({', '.join(report['sources_active']) or 'none'})", ""]
+         f"    profile: {prof}", ""]
     s = report["sources"]
     c = s.get("careers", {})
     if c.get("status") == "active":
         L.append(f"  HIRING  {c['ats']} · {c['listed_total']} listed, "
                  f"{c['posted_in_window']} posted in-window · "
                  f"{', '.join(f'{d}:{n}' for d, n in c.get('dept_concentration', [])[:4])}")
+        if c.get("ownership_warning"):
+            L.append(f"          ⚠ {c['ownership_warning']}")
         for r in c.get("recent_roles", [])[:5]:
             L.append(f"          - {_fmt_date(r.get('date'))} "
                      f"{r['title']} [{r.get('department') or ''}]")
