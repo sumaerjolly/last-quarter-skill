@@ -5,8 +5,45 @@ Run from the engine/ dir:  python3 -m unittest test_engine -v
 import unittest
 from datetime import date
 
-from lib import edgar, identity, news, window
+from lib import edgar, identity, jd_mining, news, window
 from last_quarter import build_footer
+
+
+def _stack(text, brand=None):
+    return {t["tool"] for t in jd_mining.mine([{"title": "Eng", "url": "u", "text": text}],
+                                              brand=brand)["tech_stack"]}
+
+
+class TestJdMining(unittest.TestCase):
+    """Precision is the point — ambiguous tokens only count in skill context."""
+
+    def test_real_stack_extracted(self):
+        s = _stack("Requirements: strong experience with Salesforce, Snowflake and dbt.")
+        self.assertEqual(s, {"Salesforce", "Snowflake", "dbt"})
+
+    def test_ordinary_word_not_a_tool(self):
+        # 'customer outreach' / 'audience segment' must NOT become Outreach / Segment
+        self.assertNotIn("Outreach", _stack("Own customer outreach and audience segments."))
+        self.assertNotIn("Segment", _stack("Own customer outreach and audience segments."))
+
+    def test_ambiguous_with_cue_counts(self):
+        self.assertIn("Gong", _stack("Proficiency in Gong and Outreach is required."))
+        self.assertIn("Outreach", _stack("Proficiency in Gong and Outreach is required."))
+
+    def test_go_to_market_is_not_go_language(self):
+        self.assertNotIn("Go", _stack("Experience with go-to-market strategy and a go-getter attitude."))
+
+    def test_go_language_detected_in_context(self):
+        self.assertIn("Go", _stack("Backend services written in Go and Rust."))
+
+    def test_company_own_name_excluded(self):
+        self.assertNotIn("Notion", _stack("You'll use Notion daily.", brand="Notion"))
+
+    def test_priorities_extracted(self):
+        p = jd_mining.mine([{"title": "AE", "url": "u",
+                             "text": "You'll lead our EU expansion into new markets."}])["priorities"]
+        self.assertTrue(any("EU expansion" in x["text"] for x in p))
+        self.assertEqual(p[0]["job"], "AE")
 
 
 class TestNewsCommonWordFilter(unittest.TestCase):

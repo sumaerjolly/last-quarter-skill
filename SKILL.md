@@ -135,6 +135,9 @@ Emit markdown in this shape (a positive recipe — fill every slot):
 
 ## By category
 - **Hiring:** {listed N; X posted in-window; dept concentration}. {ats url}
+  - **Tech stack** (mined from JD text, skill-context anchored) — grouped by category,
+    ranked by # of JDs; each tool cites an example job. Signals what they run / build.
+  - **Stated priorities** — "you'll lead our EU expansion"-type sentences, with the job.
 - **Product launches:** … · **Leadership:** … · **Funding/M&A:** …
 - **Expansion:** … · **Risk / negative:** {or "none surfaced this window"}
 

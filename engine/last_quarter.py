@@ -109,6 +109,12 @@ def compact(report: dict) -> str:
                  f"{', '.join(f'{d}:{n}' for d, n in c.get('dept_concentration', [])[:4])}")
         if c.get("ownership_warning"):
             L.append(f"          ⚠ {c['ownership_warning']}")
+        cats = c.get("tech_by_category") or {}
+        if cats:
+            L.append("  STACK   " + "  ·  ".join(
+                f"{cat}: {', '.join(tools[:6])}" for cat, tools in list(cats.items())[:5]))
+        for p in c.get("priorities", [])[:2]:
+            L.append(f"  PRIORITY  \"{p['text']}\"  [{p['job']}]")
         for r in c.get("recent_roles", [])[:5]:
             L.append(f"          - {_fmt_date(r.get('date'))} "
                      f"{r['title']} [{r.get('department') or ''}]")

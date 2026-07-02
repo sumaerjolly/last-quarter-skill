@@ -1,11 +1,21 @@
 """Careers / ATS collector — Ashby, Greenhouse, Lever. Verified 2026-07-01."""
 from __future__ import annotations
 
+import html as _html
+import re
 from collections import Counter
 
+from . import jd_mining
 from .http import fetch_json
 from .identity import brand_slug, norm_company
 from .window import bucket
+
+_TAG = re.compile(r"<[^>]+>")
+
+
+def _plain(s: str | None) -> str:
+    """Strip HTML tags + unescape entities (for Greenhouse/Lever JD content)."""
+    return _html.unescape(_TAG.sub(" ", s or ""))
 
 
 def token_candidates(domain: str, name: str | None = None) -> list[str]:
@@ -42,6 +52,7 @@ def _ashby(token):
             "location": j.get("location"),
             "url": j.get("jobUrl"),
             "date": j.get("publishedAt"),
+            "text": j.get("descriptionPlain"),
         } for j in jobs if j.get("isListed", True)],
     }
 
@@ -64,6 +75,7 @@ def _greenhouse(token):
             "location": (j.get("location") or {}).get("name"),
             "url": j.get("absolute_url"),
             "date": j.get("first_published") or j.get("updated_at"),
+            "text": _plain(j.get("content")),
         } for j in jobs],
     }
 
@@ -83,6 +95,7 @@ def _lever(token):
             "location": (j.get("categories") or {}).get("location"),
             "url": j.get("hostedUrl"),
             "date": j.get("createdAt"),
+            "text": j.get("descriptionPlain") or _plain(j.get("description")),
         } for j in data],
     }
 
@@ -118,6 +131,8 @@ def collect(domain: str, name: str | None, window: dict) -> dict:
     jobs = board["jobs"]
     in_window = [j for j in jobs if bucket(j["date"], window) == "in_window"]
     dept = Counter(j["department"] for j in in_window if j.get("department"))
+    # JD mining over ALL currently-listed roles (their live stack), zero extra fetches.
+    mined = jd_mining.mine(jobs, brand=name or brand_slug(domain))
     return {
         "source": "careers",
         "status": "active",
@@ -130,8 +145,12 @@ def collect(domain: str, name: str | None, window: dict) -> dict:
         "listed_total": len(jobs),
         "posted_in_window": len(in_window),
         "dept_concentration": dept.most_common(6),
+        "tech_stack": mined["tech_stack"][:20],
+        "tech_by_category": mined["tech_by_category"],
+        "priorities": mined["priorities"],
         "note": "ATS lists only currently-open roles (survivorship bias); read as "
-                "composition + freshness, not a clean growth delta.",
+                "composition + freshness, not a clean growth delta. Tech stack + "
+                "priorities mined from JD text (skill-context anchored).",
         "recent_roles": [
             {"title": j["title"], "department": j.get("department"),
              "location": j.get("location"), "date": j["date"], "url": j.get("url")}
