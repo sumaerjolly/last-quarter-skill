@@ -113,6 +113,8 @@ def compact(report: dict) -> str:
         if cats:
             L.append("  STACK   " + "  ·  ".join(
                 f"{cat}: {', '.join(tools[:6])}" for cat, tools in list(cats.items())[:5]))
+        for i in c.get("initiatives", [])[:2]:
+            L.append(f"  NEW-INIT  \"{i['text']}\"  [{i['job']}]")
         for p in c.get("priorities", [])[:2]:
             L.append(f"  PRIORITY  \"{p['text']}\"  [{p['job']}]")
         for r in c.get("recent_roles", [])[:5]:

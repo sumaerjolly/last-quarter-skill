@@ -14,8 +14,9 @@ _TAG = re.compile(r"<[^>]+>")
 
 
 def _plain(s: str | None) -> str:
-    """Strip HTML tags + unescape entities (for Greenhouse/Lever JD content)."""
-    return _html.unescape(_TAG.sub(" ", s or ""))
+    """Plain text from JD HTML. UNESCAPE FIRST (Greenhouse content is entity-encoded:
+    &lt;li&gt;), THEN strip the real tags — otherwise tags survive as visible <li>."""
+    return _TAG.sub(" ", _html.unescape(s or ""))
 
 
 def token_candidates(domain: str, name: str | None = None) -> list[str]:
@@ -148,6 +149,7 @@ def collect(domain: str, name: str | None, window: dict) -> dict:
         "tech_stack": mined["tech_stack"][:20],
         "tech_by_category": mined["tech_by_category"],
         "priorities": mined["priorities"],
+        "initiatives": mined["initiatives"],
         "note": "ATS lists only currently-open roles (survivorship bias); read as "
                 "composition + freshness, not a clean growth delta. Tech stack + "
                 "priorities mined from JD text (skill-context anchored).",

@@ -138,6 +138,8 @@ Emit markdown in this shape (a positive recipe — fill every slot):
   - **Tech stack** (mined from JD text, skill-context anchored) — grouped by category,
     ranked by # of JDs; each tool cites an example job. Signals what they run / build.
   - **Stated priorities** — "you'll lead our EU expansion"-type sentences, with the job.
+  - **New initiatives** — "newly formed X team", "0-to-1", "standing up a new Y function"
+    (a new team/function = new budget + a fresh buyer; the strongest JD trigger), with job.
 - **Product launches:** … · **Leadership:** … · **Funding/M&A:** …
 - **Expansion:** … · **Risk / negative:** {or "none surfaced this window"}
 

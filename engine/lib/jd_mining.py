@@ -46,12 +46,43 @@ def _has_go(text: str, low: str) -> bool:
     return False
 
 
-# Stated-priority sentences ("you'll lead our EU expansion", "help us scale ...").
+# Stated-priority sentences ("you'll lead our EU expansion", "we are building ...").
+# Verb stems (+\w*) so 'build' also matches 'building', 'scale' matches 'scaling', etc.
 _PRIORITY = re.compile(
     r"\b(?:you(?:'ll| will| would| get to)|we(?:'re| are| will)|help(?:ing)?(?: us)?)\s+"
-    r"(lead|own|build|drive|scale|launch|expand|grow|shape|define|establish|accelerate|"
-    r"deliver|develop|spearhead|pioneer|redefine|reimagine|transform)\b[^.\n;]{8,150}",
+    r"(?:lead|own|build|driv|scal|launch|expand|grow|shap|defin|establish|accelerat|"
+    r"deliver|develop|spearhead|pioneer|redefin|reimagin|transform|creat|run|manag)\w*"
+    r"[^.\n;]{8,150}", re.I)
+
+# NEW-INITIATIVE language — a new team/function/product = new budget + a fresh buyer, the
+# best ABM trigger in a JD. Strong markers stand alone; weak ones need an initiative-object.
+# Strong = object-optional (unambiguously a new thing). "from the ground up"/"ground
+# floor" are weak (they also describe candidate style / product history), so they need
+# an initiative-object noun to qualify.
+_INIT_STRONG = re.compile(
+    r"\b(greenfield|0[- ]to[- ]1|zero[- ]to[- ]one|"
+    r"first[- ]ever|brand[- ]new|newly[- ]?(?:formed|created|launched|established|minted)|"
+    r"first hire|founding (?:member|team|engineer))\b", re.I)
+_INIT_WEAK = re.compile(
+    r"\b(stand(?:ing)? up|spin(?:ning)? up|building (?:our|the) first|our (?:brand )?new|"
+    r"from the ground up|ground[- ]floor|"
+    r"we(?:'re| are) (?:building|launching|creating|forming|standing up|spinning up)|"
+    r"recently (?:launched|formed|created|stood up|spun up|introduced)|nascent)\b", re.I)
+_INIT_OBJ = re.compile(
+    r"\b(team|function|group|division|org|organi[sz]ation|initiative|product|platform|"
+    r"practice|vertical|market|region|office|category|program|motion|department|"
+    r"business unit|pod|squad|charter|capabilit\w*|offering|line of business|discipline)\b",
     re.I)
+
+
+def _initiatives(text: str) -> list[str]:
+    out = []
+    for sent in re.split(r"(?<=[.;!?])\s+|\n|•", text):
+        s = sent.strip()
+        if 15 < len(s) < 220 and (_INIT_STRONG.search(s)
+                                  or (_INIT_WEAK.search(s) and _INIT_OBJ.search(s))):
+            out.append(_clean_phrase(s))
+    return out
 
 # (name, category, ambiguous, [aliases], neg_pattern_or_None)
 _LEXICON = [
@@ -180,7 +211,9 @@ def mine(jobs: list[dict], brand: str | None = None) -> dict:
     self_tokens = set(norm_company(brand or "").split())
     tech: "OrderedDict[str, dict]" = OrderedDict()
     priorities: list[dict] = []
+    initiatives: list[dict] = []
     seen_pri: set = set()
+    seen_init: set = set()
 
     for j in jobs:
         text = j.get("text") or ""
@@ -202,6 +235,11 @@ def mine(jobs: list[dict], brand: str | None = None) -> dict:
             if len(phrase) > 20 and k not in seen_pri:
                 seen_pri.add(k)
                 priorities.append({"text": phrase, "job": title, "url": url})
+        for phrase in _initiatives(text):
+            k = phrase.lower()[:60]
+            if k not in seen_init:
+                seen_init.add(k)
+                initiatives.append({"text": phrase, "job": title, "url": url})
 
     stack = sorted(
         [{"tool": n, "category": d["category"], "job_count": len(d["jobs"]),
@@ -215,4 +253,5 @@ def mine(jobs: list[dict], brand: str | None = None) -> dict:
         if tools:
             by_cat[cat] = tools
 
-    return {"tech_stack": stack, "tech_by_category": by_cat, "priorities": priorities[:6]}
+    return {"tech_stack": stack, "tech_by_category": by_cat,
+            "priorities": priorities[:6], "initiatives": initiatives[:6]}

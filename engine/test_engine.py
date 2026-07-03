@@ -45,6 +45,19 @@ class TestJdMining(unittest.TestCase):
         self.assertTrue(any("EU expansion" in x["text"] for x in p))
         self.assertEqual(p[0]["job"], "AE")
 
+    def _inits(self, text):
+        return [x["text"] for x in
+                jd_mining.mine([{"title": "X", "url": "u", "text": text}])["initiatives"]]
+
+    def test_initiatives_detected(self):
+        self.assertTrue(self._inits("We are building a brand new Applied AI team."))
+        self.assertTrue(self._inits("You'll be the first hire on our newly formed EU team."))
+        self.assertTrue(self._inits("Help us stand up a new RevOps function."))
+        self.assertTrue(self._inits("This is a greenfield, 0-to-1 opportunity."))
+
+    def test_new_customers_is_not_an_initiative(self):
+        self.assertFalse(self._inits("We love our new customers and want to grow the account."))
+
 
 class TestNewsCommonWordFilter(unittest.TestCase):
     """#1: the ordinary-word filter must NOT delete funding/event headlines."""
