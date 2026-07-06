@@ -109,10 +109,15 @@ def compact(report: dict) -> str:
                  f"{', '.join(f'{d}:{n}' for d, n in c.get('dept_concentration', [])[:4])}")
         if c.get("ownership_warning"):
             L.append(f"          ⚠ {c['ownership_warning']}")
+        for r in c.get("senior_roles", [])[:4]:
+            L.append(f"  SENIOR  - {_fmt_date(r.get('date'))} {r['title']} "
+                     f"[{r.get('department') or ''}]")
         cats = c.get("tech_by_category") or {}
         if cats:
             L.append("  STACK   " + "  ·  ".join(
                 f"{cat}: {', '.join(tools[:6])}" for cat, tools in list(cats.items())[:5]))
+        if c.get("geo_note"):
+            L.append(f"  GEO     {c['geo_note']}")
         for i in c.get("initiatives", [])[:2]:
             L.append(f"  NEW-INIT  \"{i['text']}\"  [{i['job']}]")
         for p in c.get("priorities", [])[:2]:
@@ -130,6 +135,12 @@ def compact(report: dict) -> str:
             for it in v.get("signals", [])[:4]:
                 t = it.get("title") or it.get("name") or it.get("form")
                 L.append(f"          - {_fmt_date(it.get('date'))} {t}")
+            for nr in v.get("new_repos", [])[:5]:
+                L.append(f"          + NEW REPO {_fmt_date(nr.get('created'))} "
+                         f"{nr['name']} — {nr.get('description') or ''}")
+            if v.get("customer_wins"):
+                L.append("          ↳ CUSTOMERS (case studies): "
+                         + ", ".join(cw["customer"] for cw in v["customer_wins"]))
             if v.get("note"):
                 L.append(f"          ↳ {v['note']}")
         elif v.get("status") in ("empty", "skipped") and v.get("note"):

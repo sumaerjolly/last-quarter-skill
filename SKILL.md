@@ -135,11 +135,19 @@ Emit markdown in this shape (a positive recipe — fill every slot):
 
 ## By category
 - **Hiring:** {listed N; X posted in-window; dept concentration}. {ats url}
+  - **Senior/leadership roles** (`senior_roles`) — VP/Head-of/Director/Founding/Chief reqs,
+    named individually with date + job URL. A new senior req = a new budget owner. Leadership.
+  - **Geo / expansion** (`geo_note`) — "N of M in-window roles are {EMEA/APAC/LATAM}-based
+    → possible {region} expansion." Expansion signal.
   - **Tech stack** (mined from JD text, skill-context anchored) — grouped by category,
     ranked by # of JDs; each tool cites an example job. Signals what they run / build.
   - **Stated priorities** — "you'll lead our EU expansion"-type sentences, with the job.
   - **New initiatives** — "newly formed X team", "0-to-1", "standing up a new Y function"
     (a new team/function = new budget + a fresh buyer; the strongest JD trigger), with job.
+- **Traction:** **customer wins** (`blog.customer_wins`) — new logos named in case-study
+  post titles (Angi, Kayak…), each cited to the post. New reference customer = momentum.
+- **Product direction:** **net-new GitHub repos** (`github.new_repos`) — repos *created*
+  in-window (not forks) = a new product/SDK bet, distinct from release cadence.
 - **Product launches:** … · **Leadership:** … · **Funding/M&A:** …
 - **Expansion:** … · **Risk / negative:** {or "none surfaced this window"}
 

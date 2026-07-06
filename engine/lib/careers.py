@@ -134,6 +134,64 @@ def _discover_board(domain: str):
     return None, None
 
 
+# --- Geo rollup (Expansion signal) --------------------------------------------------
+# Order matters: specific regions before the generic "Remote" bucket ("Remote - EMEA"→EMEA).
+_REGION_RX = [
+    ("EMEA", r"emea|europe|london|berlin|paris|amsterdam|dublin|munich|madrid|barcelona|"
+             r"united kingdom|u\.k\.|ireland|france|germany|spain|netherlands|poland|portugal|sweden"),
+    ("APAC", r"apac|singapore|sydney|tokyo|bangalore|bengaluru|india|japan|australia|"
+             r"hong kong|seoul|new zealand|jakarta|manila"),
+    ("LATAM", r"latam|brazil|brasil|mexico|argentina|colombia|chile|s[aã]o paulo"),
+    ("North America", r"united states|new york|san francisco|nyc|boston|austin|seattle|"
+                      r"chicago|denver|los angeles|atlanta|toronto|vancouver|canada|"
+                      r"north america|u\.s\.|remote\s*[-–]\s*us|\busa?\b"),
+    ("Remote", r"\bremote\b"),
+]
+_REGION_RX = [(reg, re.compile(rx, re.I)) for reg, rx in _REGION_RX]
+
+
+def _classify_location(loc: str | None) -> str | None:
+    if not loc:
+        return None
+    for region, rx in _REGION_RX:
+        if rx.search(loc):
+            return region
+    return "Other"
+
+
+def _geo_rollup(in_window: list[dict]) -> tuple[list, str | None]:
+    c = Counter()
+    for j in in_window:
+        r = _classify_location(j.get("location"))
+        if r:
+            c[r] += 1
+    rollup = c.most_common()
+    note = None
+    # Flag the largest non-domestic region (EMEA/APAC/LATAM) with >=2 in-window roles.
+    for region, n in rollup:
+        if region in ("EMEA", "APAC", "LATAM") and n >= 2:
+            note = (f"{n} of {len(in_window)} in-window roles are {region}-based — "
+                    f"possible {region} expansion.")
+            break
+    return rollup, note
+
+
+# --- Senior / leadership roles (Leadership signal) ----------------------------------
+_SENIOR = re.compile(
+    r"(?<![a-z])(chief|cto|ceo|cfo|coo|cro|cmo|ciso|cpo|vp|vice president|head of|"
+    r"director|founding|president|general manager)(?![a-z])", re.I)
+_SENIOR_NEG = re.compile(r"art director|director of photography", re.I)
+
+
+def _senior_roles(in_window: list[dict]) -> list[dict]:
+    out = [{"title": j.get("title"), "department": j.get("department"),
+            "date": j.get("date"), "url": j.get("url")}
+           for j in in_window
+           if j.get("title") and _SENIOR.search(j["title"]) and not _SENIOR_NEG.search(j["title"])]
+    out.sort(key=lambda x: str(x["date"]), reverse=True)
+    return out[:6]
+
+
 def collect(domain: str, name: str | None, window: dict) -> dict:
     """Resolve the ATS board and summarize hiring signal. Careers = composition+freshness,
     NOT a clean this-90-vs-prior-90 delta (ATS returns only currently-open roles)."""
@@ -169,6 +227,8 @@ def collect(domain: str, name: str | None, window: dict) -> dict:
     jobs = board["jobs"]
     in_window = [j for j in jobs if bucket(j["date"], window) == "in_window"]
     dept = Counter(j["department"] for j in in_window if j.get("department"))
+    geo_rollup, geo_note = _geo_rollup(in_window)
+    senior_roles = _senior_roles(in_window)
     # JD mining over ALL currently-listed roles (their live stack), zero extra fetches.
     mined = jd_mining.mine(jobs, brand=name or brand_slug(domain))
     return {
@@ -184,6 +244,9 @@ def collect(domain: str, name: str | None, window: dict) -> dict:
         "listed_total": len(jobs),
         "posted_in_window": len(in_window),
         "dept_concentration": dept.most_common(6),
+        "geo_rollup": geo_rollup,
+        "geo_note": geo_note,
+        "senior_roles": senior_roles,
         "tech_stack": mined["tech_stack"][:20],
         "tech_by_category": mined["tech_by_category"],
         "priorities": mined["priorities"],

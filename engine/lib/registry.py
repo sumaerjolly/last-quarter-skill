@@ -36,7 +36,7 @@ SOURCES: list[Source] = [
     Source("careers", "free", lambda c: careers.collect(c.domain, c.name, c.window)),
     Source("news", "free",
            lambda c: news.collect(c.name, c.window, use_gdelt=c.use_gdelt, keywords=c.keywords)),
-    Source("blog", "free", lambda c: blog.collect(c.domain, c.window)),
+    Source("blog", "free", lambda c: blog.collect(c.domain, c.window, brand=c.name)),
     Source("status", "free", lambda c: status.collect(c.domain, c.window)),
     Source("hackernews", "free", lambda c: hackernews.collect(c.name, c.domain, c.window)),
     Source("edgar", "free", lambda c: edgar.collect(c.name, c.window, c.cik_info)),

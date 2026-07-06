@@ -5,8 +5,77 @@ Run from the engine/ dir:  python3 -m unittest test_engine -v
 import unittest
 from datetime import date
 
-from lib import edgar, identity, jd_mining, news, window
+from lib import careers, customer_wins, edgar, github, identity, jd_mining, news, window
 from last_quarter import build_footer
+
+
+class TestGeoRollup(unittest.TestCase):
+    def test_emea_flagged(self):
+        jw = [{"location": "London"}, {"location": "Berlin"}, {"location": "New York"}]
+        rollup, note = careers._geo_rollup(jw)
+        self.assertEqual(dict(rollup).get("EMEA"), 2)
+        self.assertIn("EMEA", note or "")
+
+    def test_remote_emea_buckets_emea(self):
+        self.assertEqual(careers._classify_location("Remote - EMEA"), "EMEA")
+        self.assertEqual(careers._classify_location("Remote"), "Remote")
+
+    def test_all_us_no_note(self):
+        jw = [{"location": "New York"}, {"location": "San Francisco"}, {"location": "Austin"}]
+        _, note = careers._geo_rollup(jw)
+        self.assertIsNone(note)
+
+
+class TestSeniorRoles(unittest.TestCase):
+    def _t(self, titles):
+        return {r["title"] for r in careers._senior_roles(
+            [{"title": t, "date": "2026-05-01"} for t in titles])}
+
+    def test_flagged(self):
+        self.assertEqual(
+            self._t(["VP of Engineering", "Head of Sales", "Founding Biz Ops Lead", "Director, Product"]),
+            {"VP of Engineering", "Head of Sales", "Founding Biz Ops Lead", "Director, Product"})
+
+    def test_ic_not_flagged(self):
+        self.assertEqual(self._t(["Sales Development Representative", "Senior Software Engineer"]), set())
+
+
+class TestNewRepos(unittest.TestCase):
+    def setUp(self):
+        self.w = window.make_window(date(2026, 7, 6))
+
+    def test_in_window_included(self):
+        repos = [{"name": "increase-csharp", "created_at": "2026-05-01T00:00:00Z", "fork": False}]
+        self.assertEqual([r["name"] for r in github._new_repos(repos, self.w)], ["increase-csharp"])
+
+    def test_fork_excluded(self):
+        repos = [{"name": "x", "created_at": "2026-05-01T00:00:00Z", "fork": True}]
+        self.assertEqual(github._new_repos(repos, self.w), [])
+
+    def test_old_repo_excluded(self):
+        repos = [{"name": "x", "created_at": "2025-01-01T00:00:00Z", "fork": False}]
+        self.assertEqual(github._new_repos(repos, self.w), [])
+
+
+class TestCustomerWins(unittest.TestCase):
+    def _c(self, title, brand=None):
+        return [x["customer"] for x in
+                customer_wins.extract_customer_wins([{"title": title, "url": "u"}], brand=brand)]
+
+    def test_angi(self):
+        self.assertEqual(self._c("How Angi Built a Longtail Content Strategy that Converts 79% Better"), ["Angi"])
+
+    def test_lowercase_to_rejected(self):  # real AirOps title that must NOT false-positive
+        self.assertEqual(self._c("How to Build a Brand Kit That Makes Your Content Sound Like You"), [])
+
+    def test_stoplist_rejected(self):
+        self.assertEqual(self._c("How AI Scaled Its Content Platform"), [])
+
+    def test_self_name_rejected(self):
+        self.assertEqual(self._c("Ramp Customer Story", brand="Ramp"), [])
+
+    def test_case_study(self):
+        self.assertEqual(self._c("Case Study: Kayak"), ["Kayak"])
 
 
 def _stack(text, brand=None):

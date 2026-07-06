@@ -38,6 +38,18 @@ def _resolve_org(candidates: list[str], domain: str):
     return None, None, ("error" if not saw_response else "empty")
 
 
+def _new_repos(repos: list[dict], window: dict) -> list[dict]:
+    """Repos CREATED in-window (not forks) → new product/SDK direction. created_at is
+    already in the /repos response we fetch — zero extra calls."""
+    out = [{"name": r.get("name"),
+            "description": (r.get("description") or "")[:90],
+            "created": r.get("created_at"), "url": r.get("html_url")}
+           for r in repos
+           if not r.get("fork") and bucket(r.get("created_at"), window) == "in_window"]
+    out.sort(key=lambda x: str(x["created"]), reverse=True)
+    return out
+
+
 def collect(org_candidates: list[str], window: dict, domain: str) -> dict:
     org, repos, status = _resolve_org(org_candidates, domain)
     if not repos:
@@ -67,13 +79,22 @@ def collect(org_candidates: list[str], window: dict, domain: str) -> dict:
     sdk_like = sum(n for repo, n in by_repo.items()
                    if any(k in repo.lower() for k in ("sdk", "-python", "-node", "-go",
                           "-java", "-ruby", "-php", "-typescript", "-api", "openapi")))
+    new_repos = _new_repos(repos, window)  # repos created in-window (all 15 fetched)
+
     note = None
     if sdk_like and sdk_like >= 0.5 * len(releases):
         note = (f"{sdk_like}/{len(releases)} releases are automated SDK version bumps "
                 f"(cadence signal of active API dev, not discrete product launches).")
+    if new_repos:
+        names = ", ".join(r["name"] for r in new_repos[:5])
+        nr_note = (f"{len(new_repos)} net-new repo(s) created this quarter: {names} "
+                   f"— new product/SDK direction.")
+        note = f"{note} {nr_note}" if note else nr_note
+    # A brand-new repo is signal even with no in-window releases.
+    status_active = bool(releases) or bool(new_repos)
     return {
-        "source": "github", "status": "active" if releases else "empty",
+        "source": "github", "status": "active" if status_active else "empty",
         "org": org, "count": len(releases),
-        "repos_active": by_repo.most_common(8), "note": note,
+        "repos_active": by_repo.most_common(8), "new_repos": new_repos, "note": note,
         "signals": releases[:12],
     }

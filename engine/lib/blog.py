@@ -8,6 +8,7 @@ import xml.etree.ElementTree as ET
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
+from . import customer_wins
 from .http import fetch_text
 from .window import bucket, parse_dt
 
@@ -125,7 +126,7 @@ def _html_listing(base: str, window: dict) -> list[dict]:
     return [m for m in metas if m and bucket(m["date"], window) == "in_window"]
 
 
-def collect(domain: str, window: dict) -> dict:
+def collect(domain: str, window: dict, brand: str | None = None) -> dict:
     base = _base(domain)
     feeds = discover_feeds(base)
     tried = list(feeds)
@@ -179,5 +180,6 @@ def collect(domain: str, window: dict) -> dict:
         "feed_found": feed_found,
         "feeds_used": [i["feed"] for i in uniq if i.get("feed")][:1] or feeds,
         "note": note,
+        "customer_wins": customer_wins.extract_customer_wins(uniq, brand=brand),
         "signals": uniq[:20],
     }

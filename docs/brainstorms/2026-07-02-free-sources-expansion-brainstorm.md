@@ -32,10 +32,13 @@ Priority = fill the weak rows (Risk, Leadership, Expansion) before piling onto s
    Instatus, BetterStack). *Verified:* AirOps, Datadog, GitHub, OpenAI, Linear. Needs
    discovery: try `status.{domain}` (follow redirects) → `{brand}.statuspage.io` →
    `{brand}status.com`; accept misses (Ramp/Brightwheel have none).
-2. **ATS token-discovery + more providers → Hiring coverage.** Crawl `/careers`, detect the
-   embedded ATS widget, extract the board token — unlocks all providers at once (would've
-   found Increase's Lever board). Add SmartRecruiters (live), Workable, Recruitee, BambooHR,
-   Rippling. The discovery step is the real unlock, not provider count.
+2. **ATS token-discovery → Hiring coverage. ✅ DONE (guarded, commit 8b4a8c6).** Crawl
+   `/careers`,`/jobs`,home for the ATS board link when slug-guessing misses; CONTAMINATION
+   GUARD accepts only a single distinct board (remote.com surfaced 5 other cos' tokens →
+   rejected). Runs only on misses; reuses Ashby/GH/Lever parsers.
+   **More providers (SmartRecruiters/Workable/Recruitee/BambooHR): REJECTED (tested 2026-07-06)**
+   — non-guessable IDs (SR: Visa works, Bosch/Square/IKEA empty), unverifiable endpoints
+   (Workable/Recruitee 404, BambooHR 302), enterprise/SMB → off VC-startup ICP.
 3. **Press / newsroom scan → Leadership/Funding (primary source).** Extend the blog HTML-
    listing collector to also scan `/press`, `/news`, `/newsroom`. Primary-source releases
    beat aggregators for exec changes, funding, partnerships.
