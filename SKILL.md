@@ -41,8 +41,11 @@ python3 engine/last_quarter.py {domain} --name "{Company}" --today {YYYY-MM-DD} 
 - Drop `--json` for a human-readable `compact` summary while debugging.
 
 The JSON has `window`, `profile` (public/private routing), `sources_active`, and per
-source (`careers`, `news`, `blog`, `edgar`, `github`) the dated signals + a `status` and
-`note`. **Synthesize the report (Output Contract below) from that JSON** — one pass, no
+source (`careers`, `news`, `blog`, `status`, `hackernews`, `edgar`, `github`) the dated
+signals + a `status` and `note`. (`status` = incidents/outages → Risk; `hackernews` =
+Show-HN launches, competitor mentions, eng posts.) Careers also carries `senior_roles`,
+`geo_note`, `tech_by_category`, `priorities`, `initiatives`; blog carries `customer_wins`;
+github carries `new_repos`. **Synthesize the report (Output Contract below) from that JSON** — one pass, no
 re-fetching. Respect each source's `note` (survivorship-bias caveat, noisy-news warning,
 SDK-cadence note) and the `sources_active` count for the coverage line.
 
@@ -87,7 +90,10 @@ the `/careers` page (Firecrawl if it's an empty JS shell).
 **Google News RSS** first: `news.google.com/rss/search?q="{Company}" when:90d`. Parse
 `<item>` title/link/pubDate. GDELT is a throttled backup (1 req / 5s). **Entity-check
 every hit** — generic company names collide; confirm the article is about *this* company
-before including it.
+before including it. **The `noisy` flag ≠ entity-clean:** `noisy:false` only means the
+common-word *filter* didn't fire — YOU must still read each headline and drop same-name
+collisions (a metal band, a different company sharing the name, a "Show HN" of an unrelated
+tool). Do this even when `noisy` is false.
 
 **Expect thin news for private / non-newsy vertical SaaS** — RSS + GDELT often return
 almost nothing. When both are empty, **run one WebSearch pass** for
@@ -149,16 +155,21 @@ Emit markdown in this shape (a positive recipe — fill every slot):
 - **Product direction:** **net-new GitHub repos** (`github.new_repos`) — repos *created*
   in-window (not forks) = a new product/SDK bet, distinct from release cadence.
 - **Product launches:** … · **Leadership:** … · **Funding/M&A:** …
-- **Expansion:** … · **Risk / negative:** {or "none surfaced this window"}
+- **Expansion:** … · **Risk / negative:** incidents from `status.signals` (outages,
+  degradations) + negative news {or "none surfaced this window"}.
+- **Discussion / community:** `hackernews.signals` — Show-HN launches, competitor mentions,
+  and the company's own engineering/AI posts. Slot HN items by what they are (launch → launches,
+  competitor → risk, eng post → product direction).
 
 ## Coverage & confidence
 Sources active: {N of M}. Add a {Firecrawl/Exa/PredictLeads} key to unlock {what}.
 Primary-sourced vs aggregator-sourced claims are labeled; unverified items flagged.
 
-{engine `footer` field — passed through verbatim, e.g.:}
+{engine `footer` field — passed through verbatim; 7 sources, "N/M applicable" (— = not
+applicable / routed off, excluded from the denominator), e.g.:}
 ---
-✅ sources reported back — 2/5 active
-└─ careers ✓ 9 · news ✓ 9 · blog ✗ · edgar — · github ✗
+✅ sources reported back — 4/6 applicable
+└─ careers ✓ 74 · news ✓ 47 · blog ✗ · status ✓ 18 · hackernews ✓ 6 · edgar — · github ✗
 ---
 ```
 
