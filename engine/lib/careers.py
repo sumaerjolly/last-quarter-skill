@@ -6,8 +6,8 @@ import re
 from collections import Counter
 
 from . import jd_mining
-from .http import fetch_json
-from .identity import brand_slug, norm_company
+from .http import fetch_json, fetch_text
+from .identity import brand_slug, norm_company, registrable_domain
 from .window import bucket
 
 _TAG = re.compile(r"<[^>]+>")
@@ -101,6 +101,39 @@ def _lever(token):
     }
 
 
+_PARSERS = {"ashby": _ashby, "greenhouse": _greenhouse, "lever": _lever}
+_ATS_LINK = {
+    "ashby": re.compile(r"jobs\.ashbyhq\.com/([a-z0-9][a-z0-9-]+)", re.I),
+    "greenhouse": re.compile(
+        r"(?:boards|job-boards)\.greenhouse\.io/(?:embed/job_board\?for=)?([a-z0-9]+)", re.I),
+    "lever": re.compile(r"jobs\.lever\.co/([a-z0-9][a-z0-9-]+)", re.I),
+}
+_ATS_STOP = {"embed", "job", "job_board", "www", "for"}
+
+
+def _discover_board(domain: str):
+    """Fallback when slug-guessing misses: crawl the company's own careers page for its
+    ATS board link. CONTAMINATION GUARD — accept only if the page references exactly ONE
+    distinct board (a company's own careers page links one board; an aggregator/blog links
+    many, e.g. remote.com surfaced 5 other companies' tokens)."""
+    reg = registrable_domain(domain)
+    for path in ("/careers", "/jobs", ""):
+        code, html = fetch_text(f"https://{reg}{path}" if path else f"https://{reg}")
+        if code != 200 or not html:
+            continue
+        cands = set()
+        for prov, rx in _ATS_LINK.items():
+            for tok in rx.findall(html):
+                if tok.lower() not in _ATS_STOP:
+                    cands.add((prov, tok.lower()))
+        if len(cands) == 1:  # single board → trust it
+            prov, tok = next(iter(cands))
+            board = _PARSERS[prov](tok)
+            if board:
+                return board, f"{prov}:{tok} (discovered on /{path.strip('/') or 'home'})"
+    return None, None
+
+
 def collect(domain: str, name: str | None, window: dict) -> dict:
     """Resolve the ATS board and summarize hiring signal. Careers = composition+freshness,
     NOT a clean this-90-vs-prior-90 delta (ATS returns only currently-open roles)."""
@@ -114,6 +147,10 @@ def collect(domain: str, name: str | None, window: dict) -> dict:
                 break
         if board:
             break
+
+    discovered_via = None
+    if not board:  # slug guesses missed — try discovering the board from /careers
+        board, discovered_via = _discover_board(domain)
 
     if not board:
         return {"source": "careers", "status": "empty", "tried": tried, "signals": []}
@@ -139,6 +176,7 @@ def collect(domain: str, name: str | None, window: dict) -> dict:
         "status": "active",
         "ats": board["ats"],
         "token": board["token"],
+        "discovered_via": discovered_via,
         "board_company": board_company,
         "ownership_warning": ownership_warn,
         "board_url": board["board_url"],

@@ -46,10 +46,20 @@ Priority = fill the weak rows (Risk, Leadership, Expansion) before piling onto s
 
 5. **EDGAR Form 4 + earnings dates** (public cos) — insider buying/selling (Datadog's
    "$90m") + quarterly financial facts via `data.sec.gov/api/xbrl/...`.
-6. **Wayback CDX pricing/positioning diff → Expansion.** `web.archive.org/cdx/search/cdx?
-   url={domain}&from=&to=` (*verified*); diff homepage/pricing snapshots for messaging shifts.
-7. **Wikidata / Wikipedia → Profile + funding baseline.** *Verified* (Datadog→Q16248637).
-   Structured CEO/founded/employees/total-funding for the report header.
+6. **Wayback pricing/positioning diff → Expansion. MOSTLY REJECTED as free (tested 2026-07-03).**
+   CDX change-COUNTS are reliable (Vanta pricing 4×, Ramp 5×, AirOps home 14× in-window) but
+   that's a weak, noisy "changed N times" signal (A/B tests, embedded timestamps inflate it).
+   RICH extraction fails where it matters: pricing pages are JS SPAs → archived HTML is a
+   shell → prices leak as noisy unlabeled tokens, no plan names; homepage title/meta extracted
+   for Vanta but returned None for AirOps/Stripe/Brightwheel (partial captures / redirects /
+   sparse coverage). Verdict: the emailable "repositioned X→Y / added Enterprise tier" signal
+   needs **Firecrawl (paid)** to render current + archived pages cleanly and diff — moved to
+   the paid tier. Optional free crumb: CDX change-velocity as a labeled low-confidence nudge.
+7. ~~**Wikidata / Wikipedia → Profile + funding baseline.**~~ **REJECTED (tested 2026-07-03).**
+   Coverage collapses for private cos: Linear/Vanta/Ramp/Increase have NO entity; "AirOps"
+   resolved to a plant genus. Even where present (Brightwheel, public Datadog) only
+   `founded` is populated — CEO/employees/funding all empty. Static + sparse + wrong-entity
+   risk. Not worth wiring. (Also kills podcasts' exec-name dependency — no CEO data.)
 8. **iOS App Store lookup → product cadence + rating (mobile/consumer cos).**
    `itunes.apple.com/search?term={co}&entity=software`. *Verified:* Brightwheel v3.100.0,
    4.93★ (136k), updated 2026-06-25. Free, no key.
@@ -70,12 +80,13 @@ mentions, priority sentences ("you'll lead our EU expansion"), quota-carrying-re
 *Caveat:* needs disambiguation like news — "outreach" ×9 in AirOps JDs is the noun, not
 Outreach.io. Match against a curated tool lexicon, not bare words.
 
-**B. Exec podcast/media appearances → the opener. ✅ VERIFIED — iTunes Search API, free.**
-`itunes.apple.com/search?term={exec|co}&media=podcast&entity=podcastEpisode`. AirOps
-in-window: CEO on "A Product Market Fit Show" (04-27, title contains "$13M ARR" —
-primary-source verification of an aggregator claim), Humans of Martech (05-19), plus
-competitor-context episode ("Peec AI… will win against Profound & AirOps"). Structured
-date/show/episode. Best free first-line material in outbound; also surfaces competitors.
+**B. Exec podcast/media appearances → the opener. CONDITIONAL — deprioritized (tested 2026-07-03).**
+iTunes Search API is free and high-CEILING (exec hits like Karri Saarinen/Linear and
+Christina Cacioppo/Vanta are perfect openers). BUT: company-name search is too noisy for
+common words (Linear/Vanta/Ramp = mostly garbage); ~50% of execs return 0 (Glyman, Vasen,
+Pomel — even big-co CEOs); vertical SaaS (Brightwheel) = 0. Precise recipe needs the
+EXEC NAME + company co-occurrence filter — but Wikidata can't supply exec names (rejected
+above), so there's no free exec-name source. Revisit only if an exec-name source appears.
 
 **C. USPTO trademark filings → earliest launch signal.** Free API; product names are
 trademarked *before* launch (an "AirOps Quill" filing would precede the May 13 launch).
