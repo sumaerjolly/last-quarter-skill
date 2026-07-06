@@ -6,7 +6,44 @@ import unittest
 from datetime import date
 
 from lib import careers, customer_wins, edgar, github, identity, jd_mining, news, window
+from lib.signals import build_signals
 from last_quarter import build_footer
+
+
+class TestSignals(unittest.TestCase):
+    def _report(self):
+        return {"sources": {
+            "careers": {"status": "active", "ats": "ashby", "board_url": "b",
+                        "listed_total": 23, "posted_in_window": 9,
+                        "dept_concentration": [["Sales", 4]],
+                        "senior_roles": [{"title": "VP Sales", "date": "2026-05-26", "url": "u1"}],
+                        "geo_note": "2 of 9 EMEA-based — possible EMEA expansion.",
+                        "initiatives": [{"text": "stand up new X", "job": "EM", "url": "u2"}],
+                        "priorities": [{"text": "lead EU", "job": "AE", "url": "u3"}],
+                        "tech_by_category": {"Languages": ["Python", "Go"]}},
+            "news": {"status": "active", "noisy": True,
+                     "signals": [{"title": "X raises $10M", "outlet": "TechCrunch",
+                                  "date": "2026-05-01", "url": "n1"}]},
+            "status": {"status": "active",
+                       "signals": [{"title": "API outage", "date": "2026-05-10", "url": "s1"}]},
+        }}
+
+    def test_shape_and_categories(self):
+        sig = build_signals(self._report())
+        for r in sig:  # every record has exactly the uniform key set
+            self.assertEqual(set(r), {"type", "category", "claim", "date", "url", "source", "confidence"})
+        cats = {r["category"] for r in sig}
+        self.assertTrue({"hiring", "leadership", "expansion", "strategy", "tech", "news", "risk"} <= cats)
+
+    def test_confidence_labeling(self):
+        sig = build_signals(self._report())
+        sr = next(r for r in sig if r["type"] == "senior_hire_req")
+        self.assertEqual((sr["confidence"], sr["url"], sr["date"]), ("primary", "u1", "2026-05-26"))
+        self.assertEqual(next(r for r in sig if r["type"] == "news")["confidence"], "low")  # noisy
+
+    def test_sorted_newest_first(self):
+        dated = [r for r in build_signals(self._report()) if r["date"]]
+        self.assertEqual(dated, sorted(dated, key=lambda x: x["date"], reverse=True))
 
 
 class TestGeoRollup(unittest.TestCase):

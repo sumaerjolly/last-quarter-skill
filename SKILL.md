@@ -40,7 +40,15 @@ python3 engine/last_quarter.py {domain} --name "{Company}" --today {YYYY-MM-DD} 
   Notion…) or news is unfilterable noise. The engine flags `noisy: true` when it applies.
 - Drop `--json` for a human-readable `compact` summary while debugging.
 
-The JSON has `window`, `profile` (public/private routing), `sources_active`, and per
+The JSON also has a top-level **`signals[]`** — every source's output flattened into one
+uniform, sorted array of `{type, category, claim, date, url, source, confidence}`. This is
+the **machine interface**: downstream tools/AI (copy skills, enrichment pipelines) should
+consume `signals[]`, not re-parse the prose. `confidence` is `primary` (company-owned/
+official), `unverified` (3rd-party news/HN — entity-check first), or `low` (noisy
+common-word news). Build the human report from the per-source detail; hand `signals[]` to
+machines.
+
+The JSON also has `window`, `profile` (public/private routing), `sources_active`, and per
 source (`careers`, `news`, `blog`, `status`, `hackernews`, `edgar`, `github`) the dated
 signals + a `status` and `note`. (`status` = incidents/outages → Risk; `hackernews` =
 Show-HN launches, competitor mentions, eng posts.) Careers also carries `senior_roles`,

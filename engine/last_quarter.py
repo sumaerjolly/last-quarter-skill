@@ -20,6 +20,7 @@ from datetime import date
 from lib import edgar
 from lib.careers import token_candidates
 from lib.registry import SOURCE_ORDER, SOURCES, Ctx
+from lib.signals import build_signals
 from lib.window import make_window, parse_dt
 
 
@@ -92,6 +93,7 @@ def run(domain: str, name: str, today: date, use_gdelt=True, use_github=True,
         "sources": results,
     }
     report["footer"] = build_footer(report)
+    report["signals"] = build_signals(report)  # normalized flat interface for downstream tools
     return report
 
 
