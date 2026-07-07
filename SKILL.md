@@ -168,6 +168,11 @@ Emit markdown in this shape (a positive recipe — fill every slot):
 - **Discussion / community:** `hackernews.signals` — Show-HN launches, competitor mentions,
   and the company's own engineering/AI posts. Slot HN items by what they are (launch → launches,
   competitor → risk, eng post → product direction).
+- **Competitive:** `signals[]` records with `category: "competitive"` — displacement wins
+  (they took a rival's customers), competitor attacks (someone launched a rival at them),
+  comparisons (bracketed vs a named rival); the competitor is named. **Dual-use:** point the
+  skill at a *competitor's* domain and every signal reads as competitor tracking — this
+  category makes that explicit.
 
 ## Coverage & confidence
 Sources active: {N of M}. Add a {Firecrawl/Exa/PredictLeads} key to unlock {what}.

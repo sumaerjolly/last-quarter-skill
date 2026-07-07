@@ -5,9 +5,30 @@ Run from the engine/ dir:  python3 -m unittest test_engine -v
 import unittest
 from datetime import date
 
-from lib import careers, customer_wins, edgar, github, identity, jd_mining, news, window
+from lib import careers, competitive, customer_wins, edgar, github, identity, jd_mining, news, window
 from lib.signals import build_signals
 from last_quarter import build_footer
+
+
+class TestCompetitive(unittest.TestCase):
+    def _x(self, title, brand):
+        return competitive.extract_competitive([{"title": title, "url": "u", "source": "blog"}], brand)
+
+    def test_displacement_win(self):
+        r = self._x("Why Childcare Programs Switch from Playground to Brightwheel", "Brightwheel")
+        self.assertEqual((r[0]["competitor"], r[0]["kind"]), ("Playground", "displacement_win"))
+
+    def test_competitor_attack(self):
+        r = self._x("Rippling launches Vanta/Delve competitor", "Vanta")
+        self.assertEqual((r[0]["competitor"], r[0]["kind"]), ("Rippling", "competitor_attack"))
+
+    def test_comparison(self):
+        r = self._x("Brightwheel vs Procare: which is better", "Brightwheel")
+        self.assertEqual((r[0]["competitor"], r[0]["kind"]), ("Procare", "comparison"))
+
+    def test_no_false_positive(self):
+        self.assertEqual(self._x("How Brightwheel Built a Longtail Content Strategy", "Brightwheel"), [])
+        self.assertEqual(self._x("Why teams switch to Brightwheel", "Brightwheel"), [])  # no named competitor
 
 
 class TestSignals(unittest.TestCase):

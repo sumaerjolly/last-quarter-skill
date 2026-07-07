@@ -10,6 +10,7 @@ Each record: {type, category, claim, date, url, source, confidence}
 """
 from __future__ import annotations
 
+from . import competitive
 from .window import parse_dt
 
 
@@ -108,6 +109,26 @@ def build_signals(report: dict) -> list[dict]:
             desc = f": {r.get('description')}" if r.get("description") else ""
             add("new_repo", "product", f"New repo {r.get('name')}{desc}", "github",
                 date=_d(r.get("created")), url=r.get("url"))
+
+    # --- competitive dynamics (mined across blog/news/HN titles) ---
+    brand = (report.get("profile") or {}).get("name") or ""
+    comp_items = []
+    for key in ("blog", "news", "hackernews"):
+        v = s.get(key, {})
+        if v.get("status") == "active":
+            for it in v.get("signals", []):
+                comp_items.append({"title": it.get("title"), "date": it.get("date"),
+                                   "url": it.get("discussion") or it.get("url"), "source": key})
+    _label = {
+        "displacement_win": lambda c: f"Displacement — winning customers from {c}",
+        "competitor_attack": lambda c: f"{c} launched/aimed a rival at {brand}",
+        "comparison": lambda c: f"Bracketed against {c}",
+    }
+    for cr in competitive.extract_competitive(comp_items, brand):
+        add(cr["kind"], "competitive",
+            f"{_label[cr['kind']](cr['competitor'])}: {cr['title']}",
+            cr["source"], confidence="primary" if cr["source"] == "blog" else "unverified",
+            date=_d(cr["date"]), url=cr["url"])
 
     # dated signals first (newest first), then undated
     out.sort(key=lambda x: (x["date"] is not None, x["date"] or ""), reverse=True)
