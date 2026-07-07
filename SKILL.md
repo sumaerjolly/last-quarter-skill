@@ -66,7 +66,11 @@ source (`careers`, `news`, `blog`, `status`, `hackernews`, `edgar`, `github`) th
 signals + a `status` and `note`. (`status` = incidents/outages → Risk; `hackernews` =
 Show-HN launches, competitor mentions, eng posts.) Careers also carries `senior_roles`,
 `geo_note`, `tech_by_category`, `priorities`, `initiatives`; blog carries `customer_wins`;
-github carries `new_repos`. **Synthesize the report (Output Contract below) from that JSON** — one pass, no
+github carries `new_repos`. **`webstack`** = OBSERVED website technographics (script/header
+fingerprints, domain-anchored) — Intercom/Segment/HubSpot/6sense/Webflow etc. actually
+installed on the site. This is *observed* (confidence `primary`) vs JD-mined `tech_stack`
+which is *stated*; a tool in both is flagged "corroborated by JDs". Point-in-time context,
+not a why-now — it lives in By-category, not Top signals. **Synthesize the report (Output Contract below) from that JSON** — one pass, no
 re-fetching. Respect each source's `note` (survivorship-bias caveat, noisy-news warning,
 SDK-cadence note) and the `sources_active` count for the coverage line.
 

@@ -462,6 +462,48 @@ class TestRenderMd(unittest.TestCase):
         self.assertNotIn("\x1b", self.md)
 
 
+class TestWebstack(unittest.TestCase):
+    def test_detects_installed_snippets(self):
+        from lib import webstack
+        html = ('<script src="https://js.intercomcdn.com/frame.js"></script>'
+                '<script src="https://cdn.segment.com/analytics.js/v1/x/analytics.min.js"></script>'
+                '<link href="https://assets.website-files.com/x.css">')
+        tools = {d["tool"] for d in webstack.detect(html, {})}
+        self.assertEqual(tools, {"Intercom", "Segment", "Webflow"})
+
+    def test_prose_mention_does_not_match(self):  # signature negative — the "outreach" lesson
+        html = "<p>How we integrated Intercom and Segment into our GTM workflow</p>"
+        self.assertEqual(from_lib_detect(html, {}), [])
+
+    def test_header_only_detection(self):
+        from lib import webstack
+        tools = {d["tool"] for d in webstack.detect("", {"cf-ray": "abc123", "x-vercel-id": "xyz"})}
+        self.assertEqual(tools, {"Cloudflare", "Vercel"})
+
+    def test_observed_stack_signal_and_corroboration(self):
+        rep = {"window": {"end": "2026-07-07", "start": "2026-04-08"},
+               "profile": {"name": "Acme", "domain": "acme.com", "public": False, "ticker": None},
+               "sources": {
+                   "webstack": {"status": "active", "count": 2,
+                                "by_category": {"Analytics": ["Segment"], "ABM": ["6sense"]}},
+                   "careers": {"status": "active", "ats": "ashby", "board_url": "b",
+                               "listed_total": 5, "posted_in_window": 3, "dept_concentration": [],
+                               "senior_roles": [{"title": "VP Eng", "date": "2026-06-01", "url": "u"}],
+                               "tech_stack": [{"tool": "Segment", "category": "Data"}]},
+               }}
+        sig = build_signals(rep)
+        obs = next(r for r in sig if r["type"] == "observed_stack")
+        self.assertEqual(obs["confidence"], "primary")
+        self.assertIn("corroborated by JDs: Segment", obs["claim"])
+        senior = next(r for r in sig if r["type"] == "senior_hire_req")
+        self.assertLess(sig.index(senior), sig.index(obs))  # context never outranks an event
+
+
+def from_lib_detect(html, headers):
+    from lib import webstack
+    return webstack.detect(html, headers)
+
+
 class TestBlogPaths(unittest.TestCase):
     def test_post_link_paths(self):
         from lib.blog import _POST_LINK

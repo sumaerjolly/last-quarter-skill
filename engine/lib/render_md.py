@@ -60,6 +60,10 @@ def render_md(report: dict) -> str:
             L.append(f'  - Priority: "{pr["text"]}" [{pr.get("job")}]')
         for ini in c.get("initiatives", [])[:2]:
             L.append(f'  - Initiative: "{ini["text"]}" [{ini.get("job")}]')
+    ws = s.get("webstack", {})
+    if ws.get("status") == "active":
+        L.append("- **Observed on site:** " + " · ".join(
+            f"{cat}: {', '.join(tools)}" for cat, tools in (ws.get("by_category") or {}).items()))
     pd = s.get("pdl", {})
     if pd.get("status") == "active":
         roll = ", ".join(f"{d}:{n}" for d, n in pd.get("dept_rollup", []))

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import os
 
-from .http import fetch_json, fetch_text, post_json
+from .http import fetch_full, fetch_json, fetch_text, post_json
 
 
 def _probe(name, fn):
@@ -60,6 +60,13 @@ def _github():
     return (c == 200), f"HTTP {c}"
 
 
+def _webstack():
+    from .webstack import detect
+    c, body, hdrs = fetch_full("https://www.vanta.com", maxbytes=300_000)
+    n = len(detect(body.decode("utf-8", "replace"), hdrs)) if c == 200 else 0
+    return (c == 200 and n > 0), f"{n} fingerprints on vanta.com"
+
+
 def _exa():
     if not os.getenv("EXA_API_KEY"):
         return None, "no key"
@@ -86,7 +93,8 @@ _CHECKS = [
     ("ashby", _ashby), ("greenhouse", _greenhouse), ("lever", _lever),
     ("google_news", _google_news), ("gdelt", lambda: (None, "skipped (throttled API)")),
     ("hackernews", _hackernews), ("statuspage", _statuspage), ("sec_edgar", _sec),
-    ("github", _github), ("exa", _exa), ("firecrawl", _firecrawl), ("pdl", _pdl),
+    ("github", _github), ("webstack", _webstack),
+    ("exa", _exa), ("firecrawl", _firecrawl), ("pdl", _pdl),
 ]
 
 

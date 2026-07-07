@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
-from . import blog, careers, edgar, exa, github, hackernews, news, pdl, status
+from . import blog, careers, edgar, exa, github, hackernews, news, pdl, status, webstack
 
 
 @dataclass
@@ -42,6 +42,7 @@ SOURCES: list[Source] = [
     Source("blog", "free", lambda c: blog.collect(c.domain, c.window, brand=c.name)),
     Source("status", "free", lambda c: status.collect(c.domain, c.window)),
     Source("hackernews", "free", lambda c: hackernews.collect(c.name, c.domain, c.window)),
+    Source("webstack", "free", lambda c: webstack.collect(c.domain)),
     Source("pdl", "paid",  # recent new hires (named + dept rollup); key-gated
            lambda c: pdl.collect(c.name, c.domain, c.window),
            applies=lambda c: pdl.available()),

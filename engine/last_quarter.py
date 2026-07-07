@@ -172,8 +172,8 @@ def compact(report: dict) -> str:
         if pd.get("note"):
             L.append(f"          ↳ {pd['note']}")
 
-    for key, label in (("blog", "LAUNCH/BLOG"), ("exa", "NEWS(Exa)"), ("news", "NEWS(free)"),
-                       ("status", "RISK/STATUS"), ("hackernews", "HN"),
+    for key, label in (("webstack", "SITE"), ("blog", "LAUNCH/BLOG"), ("exa", "NEWS(Exa)"),
+                       ("news", "NEWS(free)"), ("status", "RISK/STATUS"), ("hackernews", "HN"),
                        ("edgar", "EDGAR"), ("github", "GITHUB")):
         v = s.get(key, {})
         if v.get("status") == "active":

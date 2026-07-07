@@ -46,6 +46,26 @@ def fetch_text(url: str, **kw) -> tuple[int, str]:
     return code, body.decode("utf-8", "replace")
 
 
+def fetch_full(url: str, *, timeout: int = 12, headers: dict | None = None,
+               maxbytes: int | None = None) -> tuple[int, bytes, dict]:
+    """GET → (status, body_bytes, response_headers). Header names lowercased.
+    Transport failure → (0, b'', {}). Never raises."""
+    req = urllib.request.Request(url, headers={"User-Agent": UA, **(headers or {})})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read(maxbytes) if maxbytes else resp.read()
+            hdrs = {k.lower(): v for k, v in resp.headers.items()}
+            return resp.status, body, hdrs
+    except urllib.error.HTTPError as e:
+        try:
+            hdrs = {k.lower(): v for k, v in e.headers.items()}
+        except Exception:
+            hdrs = {}
+        return e.code, (e.read() if hasattr(e, "read") else b""), hdrs
+    except Exception:
+        return 0, b"", {}
+
+
 def fetch_json(url: str, **kw):
     """GET and parse JSON. Returns (status_code, obj_or_None)."""
     code, body = fetch(url, **kw)

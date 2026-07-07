@@ -25,6 +25,7 @@ _TYPE_WEIGHT = {
     "new_hires_rollup": 4, "comparison": 4,
     "news": 3, "stated_priority": 3,
     "blog_post": 2, "open_roles": 2, "hn_discussion": 2, "tech_stack": 2, "release": 2,
+    "observed_stack": 2,
     "data_caveat": 1,
 }
 # High-stakes events buried in generic `news` → promote to weight 5.
@@ -156,6 +157,21 @@ def build_signals(report: dict) -> list[dict]:
             when = f" ({h['start']})" if h.get("start") else ""
             add("new_hire", "leadership", f"{h.get('name')} joined as {h.get('title')}{when}",
                 "pdl", confidence="aggregator", date=_d(h.get("start")), url=h.get("linkedin"))
+
+    # --- webstack (observed technographics) — ONE aggregated record ---
+    ws = s.get("webstack", {})
+    if ws.get("status") == "active":
+        by_cat = ws.get("by_category") or {}
+        claim = "Observed on site — " + " · ".join(
+            f"{cat}: {', '.join(tools)}" for cat, tools in by_cat.items())
+        # Corroboration: tools appearing in BOTH observed site AND JD-stated stack.
+        careers_tech = (s.get("careers") or {}).get("tech_stack") or []
+        stated = {t.get("tool", "").lower() for t in careers_tech}
+        both = sorted(t for tools in by_cat.values() for t in tools if t.lower() in stated)
+        if both:
+            claim += f" (corroborated by JDs: {', '.join(both)})"
+        add("observed_stack", "tech", claim[:240], "webstack", confidence="primary",
+            url=f"https://{(report.get('profile') or {}).get('domain', '')}")
 
     # --- EDGAR filings ---
     e = s.get("edgar", {})
