@@ -9,9 +9,15 @@ the new-hires plan, the free-source brainstorm, SKILL.md, and references/sources
 ## Principle
 
 Free tier stands alone (7 sources + JD mining). Paid = **opt-in "add keys" enrichment**,
-integrated via **MCP from the agent layer** or thin key-gated collectors, keeping the
-pure-Python free engine dependency-free. Paid runs should be **opt-in / escalation-only**
-(when the free signal is thin), with cost caps — Apify/PDL/Crustdata cost real money.
+key-gated collectors, keeping the pure-Python free engine dependency-free. Paid runs
+should be **opt-in / escalation-only** (when the free signal is thin), with cost caps.
+
+**SELF-SERVE ONLY (2026-07-07).** This is open-source: a paid tool that requires a sales
+call is dead weight — nobody running the OSS skill can activate a key they can't self-serve.
+Every paid source must have a self-serve API key + public pricing (ideally a free trial).
+**Crustdata is DROPPED** for being sales-gated. Cost: we lose its clean headcount-growth-QoQ
+datapoint; no self-serve tool gives QoQ growth cleanly (PDL/Apify get only point-in-time
+headcount, and delta mode is killed), so "are they actually growing?" stays approximate.
 
 ## What free JD mining changed
 
@@ -29,13 +35,14 @@ Fixes the hiring *trajectory* we cut (ATS survivorship bias) with real joiners +
   filter; name/title/seniority/dept/LinkedIn/start-month. Self-serve, 500 free credits,
   Python SDK, ~$0.20–0.28/record. Weakness: monthly-batch freshness (widen window ~120d,
   label "approx.").
-- **Crustdata** — PRODUCTION upgrade. Native `recently_changed_jobs` (90d) + `/company/enrich`
-  **headcount growth QoQ/by-dept** + Watcher webhooks (fresh). Sales-gated, freshest tier
-  enterprise. **Headcount-growth-QoQ = flagged killer STANDALONE datapoint** (one cheap call
-  gives the clean trajectory ATS can't).
-- **Sumble** — DEPRIORITIZED (tech-stack now free). Only if we want its deeper org/tech graph.
-  Has a Printing Press credit-aware CLI/MCP wrapper.
-- Decision: **PDL prototype → Crustdata production.** (Detail: new-hires-signal-plan.md.)
+- ~~**Crustdata**~~ — **DROPPED (sales-gated, 2026-07-07).** Was the production upgrade
+  (native `recently_changed_jobs` + headcount-growth-QoQ + webhooks), but no self-serve key
+  → violates the OSS self-serve principle. Its unique value (clean QoQ headcount growth) has
+  no self-serve replacement; that signal stays approximate.
+- **Sumble** — DEPRIORITIZED (tech-stack now free via JD mining), but self-serve, so it
+  *stays eligible* if we ever want its org/tech graph. Has a Printing Press CLI/MCP wrapper.
+- Decision: **PDL is the new-hires source** (self-serve, free trial). No production upgrade
+  path (Crustdata dropped); PDL is it.
 
 ### 2. News that free can't disambiguate
 - **Exa** — neural, date-filtered, entity-resolved company news. Fixes the common-word
@@ -67,18 +74,19 @@ Fixes the hiring *trajectory* we cut (ATS survivorship bias) with real joiners +
 - Otherwise integrate each via its own **MCP** (PDL / Crustdata / Sumble / Firecrawl / Exa
   all expose MCP) from the agent layer — keeps the free Python engine dependency-free.
 
-## Recommended priority
+## Recommended priority (self-serve only)
 - **P1 — Exa (news fix) + PDL (new-hires prototype).** Both upgrade core categories; cheapest
   to validate (self-serve + free trials).
 - **P2 — Firecrawl.** Unlocks JS careers/status pages + the Wayback positioning/pricing diff.
-- **P3 — Crustdata.** Headcount-QoQ standalone + production new-hires.
-- **P4 — Apify social/reviews.** Nice-to-have, fragile; escalation-only.
+- **P3 — Apify social/reviews** (LinkedIn/Twitter/Trustpilot). Self-serve token; fragile,
+  escalation-only.
+- ~~Crustdata~~ — dropped (sales-gated).
 
 ## Open decisions
 1. **Escalation model:** paid default-on when key present, opt-in per run, or only-when-free-
    thin? (Lean: opt-in / escalation-only + cost caps.)
-2. **Integration:** Printing Press uniform layer vs per-provider MCP.
-3. **PDL plan's 3 open questions** (prototype scope, trigger logic, Crustdata timing) still open.
+2. **Integration:** per-provider key-gated collectors (self-serve keys only).
+3. **PDL plan's open questions** (prototype scope, trigger logic) still open.
 
 ## Rejected (tested, not paid-worthy either)
 - **Wikidata** (free) — no coverage for private cos. **Podcasts** (free) — ~50% exec miss +
