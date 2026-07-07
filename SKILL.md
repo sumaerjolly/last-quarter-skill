@@ -214,7 +214,12 @@ Paid upgrades (self-serve keys only — activate automatically when the env var 
   drops same-name companies' own domains, sets `noisy:true`, and recommends `--keywords
   "<what they do>"` (which cleans it fully). Prefer `exa` signals over free `news` when both
   are present.
-- Planned: **Firecrawl** (JS-rendered pages), **Apify** (LinkedIn/Twitter/Trustpilot).
+- **`FIRECRAWL_API_KEY` → blog escalation (BUILT):** renders JS-shell blog listings the
+  free tier can't read. **Escalation-only** (fires only when the free blog is a true JS
+  shell) and **listing-only, never per-post** (≤2 credits/company). Recovers post
+  titles/URLs → customer-wins + competitive + topics; **dates unavailable** from a rendered
+  listing (labeled as such — not for launch recency).
+- Planned: **Apify** (LinkedIn/Twitter/Trustpilot).
 Details in references/sources.md.
 
 ## Common Mistakes

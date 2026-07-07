@@ -10,6 +10,24 @@ from lib.signals import build_signals
 from last_quarter import build_footer
 
 
+class TestFirecrawl(unittest.TestCase):
+    def test_unavailable_without_key(self):
+        import os
+        from lib import firecrawl_render
+        old = os.environ.pop("FIRECRAWL_API_KEY", None)
+        try:
+            self.assertFalse(firecrawl_render.available())
+        finally:
+            if old:
+                os.environ["FIRECRAWL_API_KEY"] = old
+
+    def test_post_url_pattern(self):
+        from lib.firecrawl_render import _POST
+        self.assertTrue(_POST.search("https://x.com/resources/some-guide-here"))
+        self.assertTrue(_POST.search("https://x.com/blog/my-post"))
+        self.assertIsNone(_POST.search("https://x.com/pricing"))
+
+
 class TestExaClassify(unittest.TestCase):
     """Entity classification for Exa results (the common-word collision guard)."""
 

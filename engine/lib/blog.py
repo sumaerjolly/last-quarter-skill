@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
-from . import customer_wins
+from . import customer_wins, firecrawl_render
 from .http import fetch_text
 from .window import bucket, parse_dt
 
@@ -150,6 +150,14 @@ def collect(domain: str, window: dict, brand: str | None = None) -> dict:
         items = _html_listing(base, window)
         if items:
             via = "html-listing"
+    # Escalation to paid Firecrawl ONLY for a true JS shell (no feed, no server-rendered
+    # posts) — never runs when the free tier already read the blog. Listing only, no per-post.
+    fc_credits = 0
+    if not items and not feed_found and firecrawl_render.available():
+        fc = firecrawl_render.render_blog(domain)
+        if fc:
+            items, via, fc_credits = fc["posts"], "firecrawl", fc["credits"]
+
     seen, uniq = set(), []
     for it in sorted(items, key=lambda x: str(parse_dt(x["date"]) or ""), reverse=True):
         k = it["title"].lower()[:80]
@@ -157,17 +165,22 @@ def collect(domain: str, window: dict, brand: str | None = None) -> dict:
             seen.add(k)
             uniq.append(it)
 
-    # Migration-smell: if many posts share one exact date, the CMS likely reset
-    # datePublished on a migration → dates are unreliable (seen on AirOps: 20 @ 2026-06-28).
+    # Migration-smell: if many DATED posts share one exact date, the CMS likely reset
+    # datePublished (seen on AirOps: 20 @ 2026-06-28). Skip when posts are undated (Firecrawl).
     date_warn = None
-    if uniq:
-        dc = Counter(str(parse_dt(x["date"]) or "")[:10] for x in uniq)
+    dated = [x for x in uniq if parse_dt(x.get("date"))]
+    if dated:
+        dc = Counter(parse_dt(x["date"]).date().isoformat() for x in dated)
         top_date, top_n = dc.most_common(1)[0]
-        if top_n >= 5 and top_n >= 0.6 * len(uniq):
-            date_warn = (f"{top_n}/{len(uniq)} posts share the date {top_date} — likely a CMS "
+        if top_n >= 5 and top_n >= 0.6 * len(dated):
+            date_warn = (f"{top_n}/{len(dated)} posts share the date {top_date} — likely a CMS "
                          f"migration reset; treat blog post dates as low-confidence.")
 
-    if uniq:
+    if uniq and via == "firecrawl":
+        note = (f"Rendered via Firecrawl ({fc_credits} credit(s)); post DATES UNAVAILABLE — "
+                f"recency not confirmed. Use for customer-wins / competitive / topics, not "
+                f"launch timing.")
+    elif uniq:
         note = date_warn
     elif feed_found:
         note = "Blog feed found but no posts in the last 90 days (quiet quarter)."
@@ -177,7 +190,7 @@ def collect(domain: str, window: dict, brand: str | None = None) -> dict:
     return {
         "source": "blog", "status": "active" if uniq else "empty",
         "count": len(uniq), "via": via if uniq else None,
-        "feed_found": feed_found,
+        "feed_found": feed_found, "firecrawl_credits": fc_credits,
         "feeds_used": [i["feed"] for i in uniq if i.get("feed")][:1] or feeds,
         "note": note,
         "customer_wins": customer_wins.extract_customer_wins(uniq, brand=brand),
