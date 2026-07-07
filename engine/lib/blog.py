@@ -12,7 +12,9 @@ from . import customer_wins, firecrawl_render
 from .http import fetch_text
 from .window import bucket, parse_dt
 
-_POST_LINK = re.compile(r'href=["\'](/(?:blog|changelog|news|updates|posts)/[a-z0-9][a-z0-9\-]{4,})["\']', re.I)
+_POST_LINK = re.compile(
+    r'href=["\'](/(?:blog|changelog|news|updates|posts|resources|customers|case-stud\w+|'
+    r'stories|insights)/[a-z0-9][a-z0-9\-]{4,})["\']', re.I)
 _DATE_META = re.compile(
     r'"datePublished"\s*:\s*"([^"]+)"'
     r'|<meta[^>]+article:published_time[^>]+content=["\']([^"\']+)["\']'
@@ -110,7 +112,8 @@ def _html_listing(base: str, window: dict) -> list[dict]:
     when content is server-rendered; reserve Firecrawl for true empty JS shells."""
     slugs: list[str] = []
     seen = set()
-    for page in ("/blog", "/changelog", "/updates", "/news"):
+    for page in ("/blog", "/changelog", "/updates", "/news",
+                 "/resources", "/customers", "/case-studies"):
         code, html = fetch_text(base + page)
         if code != 200:
             continue

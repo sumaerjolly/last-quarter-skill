@@ -10,8 +10,52 @@ Each record: {type, category, claim, date, url, source, confidence}
 """
 from __future__ import annotations
 
+import re
+
 from . import competitive
 from .window import parse_dt
+
+# Coarse ranking — a sane DEFAULT ordering (a floor, not an editor). The LLM re-ranks with
+# context; this just stops the md skeleton from putting a fresh blog post above a funding
+# event. Keep the tiers coarse; do not add cleverness.
+_TYPE_WEIGHT = {
+    "new_hire": 5, "senior_hire_req": 5, "new_initiative": 5, "customer_win": 5,
+    "displacement_win": 5, "competitor_attack": 5,
+    "geo_expansion": 4, "new_repo": 4, "incident": 4, "sec_filing": 4,
+    "new_hires_rollup": 4, "comparison": 4,
+    "news": 3, "stated_priority": 3,
+    "blog_post": 2, "open_roles": 2, "hn_discussion": 2, "tech_stack": 2, "release": 2,
+    "data_caveat": 1,
+}
+# High-stakes events buried in generic `news` → promote to weight 5.
+_EVENT_HIGH = re.compile(
+    r"\b(raise[sd]?|raising|funding|series [a-e]|valuation|acqui\w+|merg\w+|appoint\w+|"
+    r"names? new|joins? as|steps? down|resign\w*|layoff\w*|ipo)\b", re.I)
+_CONF_MULT = {"primary": 1.0, "unverified": 0.8, "aggregator": 0.7, "low": 0.4}
+_CONF_RANK = {"primary": 3, "unverified": 2, "aggregator": 1, "low": 0}
+
+
+def _recency(date_iso, window) -> float:
+    """Deterministic decay against window END (never wall-clock). Undated → 0.5."""
+    d = parse_dt(date_iso)
+    end = parse_dt((window or {}).get("end"))
+    if not d or not end:
+        return 0.5
+    age = (end.date() - d.date()).days
+    if age <= 14:
+        return 1.0
+    if age <= 30:
+        return 0.8
+    if age <= 60:
+        return 0.6
+    return 0.4
+
+
+def _score(rec: dict, window) -> float:
+    w = _TYPE_WEIGHT.get(rec["type"], 2)
+    if rec["type"] == "news" and _EVENT_HIGH.search(rec.get("claim") or ""):
+        w = 5
+    return round(w * _recency(rec["date"], window) * _CONF_MULT.get(rec["confidence"], 0.8), 2)
 
 
 def _d(value):
@@ -151,6 +195,20 @@ def build_signals(report: dict) -> list[dict]:
             cr["source"], confidence="primary" if cr["source"] == "blog" else "unverified",
             date=_d(cr["date"]), url=cr["url"])
 
-    # dated signals first (newest first), then undated
-    out.sort(key=lambda x: (x["date"] is not None, x["date"] or ""), reverse=True)
+    # Common-word collision propagation: if Exa (or free news) flagged the name ambiguous,
+    # ALL news is collision-suspect → downgrade to low (drops it in rank + adds ⚠ marker).
+    ambiguous = bool((s.get("exa") or {}).get("noisy") or (s.get("exa") or {}).get("collisions")
+                     or (s.get("news") or {}).get("noisy"))
+    if ambiguous:
+        for r in out:
+            if r["category"] == "news" and r["confidence"] != "low":
+                r["confidence"] = "low"
+
+    # Score (coarse floor), then sort: score, then confidence (primary wins ties over
+    # unverified/low), then recency.
+    window = report.get("window")
+    for r in out:
+        r["score"] = _score(r, window)
+    out.sort(key=lambda x: (x["score"], _CONF_RANK.get(x["confidence"], 2),
+                            x["date"] is not None, x["date"] or ""), reverse=True)
     return out

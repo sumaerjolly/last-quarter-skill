@@ -91,5 +91,5 @@ def collect(name: str, domain: str, window: dict, keywords: str | None = None) -
     return {
         "source": "exa", "status": "active" if signals else "empty",
         "count": len(signals), "noisy": noisy, "collisions": sorted(collisions),
-        "note": note, "signals": signals[:15],
+        "calls": 1, "note": note, "signals": signals[:15],
     }

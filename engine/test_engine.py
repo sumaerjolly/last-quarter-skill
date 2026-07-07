@@ -127,10 +127,75 @@ class TestSignals(unittest.TestCase):
 
     def test_shape_and_categories(self):
         sig = build_signals(self._report())
-        for r in sig:  # every record has exactly the uniform key set
-            self.assertEqual(set(r), {"type", "category", "claim", "date", "url", "source", "confidence"})
+        for r in sig:  # every record has exactly the uniform key set (+ score)
+            self.assertEqual(set(r),
+                             {"type", "category", "claim", "date", "url", "source", "confidence", "score"})
         cats = {r["category"] for r in sig}
         self.assertTrue({"hiring", "leadership", "expansion", "strategy", "tech", "news", "risk"} <= cats)
+
+    def _win(self):
+        return {"window": {"end": "2026-07-07", "start": "2026-04-08"}, "sources": {}}
+
+    def test_new_hire_outranks_fresh_blog_post(self):
+        rep = self._win()
+        rep["sources"] = {
+            "pdl": {"status": "active", "dept_rollup": [], "senior_hires": [
+                {"name": "Jane Doe", "title": "VP Eng", "start": "2026-05-28", "linkedin": "u"}]},
+            "blog": {"status": "active", "signals": [
+                {"title": "A blog post", "date": "2026-07-05", "url": "b"}]},
+        }
+        sig = build_signals(rep)
+        hire = next(r for r in sig if r["type"] == "new_hire")
+        post = next(r for r in sig if r["type"] == "blog_post")
+        self.assertGreater(hire["score"], post["score"])
+        self.assertLess(sig.index(hire), sig.index(post))
+
+    def test_low_confidence_news_below_primary_weight4(self):
+        rep = self._win()
+        rep["sources"] = {
+            "news": {"status": "active", "noisy": True, "signals": [
+                {"title": "Something happened", "outlet": "X", "date": "2026-07-06", "url": "n"}]},
+            "status": {"status": "active", "signals": [
+                {"title": "Outage", "date": "2026-05-01", "url": "s"}]},
+        }
+        sig = build_signals(rep)
+        news = next(r for r in sig if r["type"] == "news")
+        inc = next(r for r in sig if r["type"] == "incident")
+        self.assertLess(news["score"], inc["score"])
+
+    def test_funding_verb_news_boosted(self):
+        from lib import signals
+        rep = self._win()
+        rep["sources"] = {"news": {"status": "active", "signals": [
+            {"title": "Acme raises $25M Series B", "outlet": "TC", "date": "2026-05-01", "url": "a"},
+            {"title": "Acme opens new office", "outlet": "TC", "date": "2026-05-01", "url": "b"}]}}
+        sig = build_signals(rep)
+        boosted = next(r for r in sig if "raises" in r["claim"])
+        plain = next(r for r in sig if "opens" in r["claim"])
+        self.assertGreater(boosted["score"], plain["score"])
+
+    def test_collision_propagation_downgrades_news(self):
+        rep = self._win()
+        rep["sources"] = {
+            "exa": {"status": "active", "noisy": True, "collisions": ["reflowmedical.com"], "signals": []},
+            "news": {"status": "active", "signals": [
+                {"title": "Someone raises $50M", "outlet": "TC", "date": "2026-07-01", "url": "n"}]},
+            "careers": {"status": "active", "ats": "ashby", "board_url": "b", "listed_total": 5,
+                        "posted_in_window": 3, "dept_concentration": [],
+                        "senior_roles": [{"title": "VP Eng", "date": "2026-05-01", "url": "u"}]},
+        }
+        sig = build_signals(rep)
+        news = next(r for r in sig if r["type"] == "news")
+        senior = next(r for r in sig if r["type"] == "senior_hire_req")
+        self.assertEqual(news["confidence"], "low")            # ambiguous → downgraded
+        self.assertLess(sig.index(senior), sig.index(news))    # primary outranks collision news
+
+    def test_deterministic(self):
+        rep = self._win()
+        rep["sources"] = {"status": {"status": "active", "signals": [
+            {"title": "Outage", "date": "2026-05-01", "url": "s"}]}}
+        self.assertEqual([r["score"] for r in build_signals(rep)],
+                         [r["score"] for r in build_signals(rep)])
 
     def test_confidence_labeling(self):
         sig = build_signals(self._report())
@@ -349,6 +414,64 @@ class TestWindow(unittest.TestCase):
         self.assertIsNotNone(window.parse_dt(1747000000000))  # epoch ms (Lever)
 
 
+def _full_report():
+    from last_quarter import build_footer
+    from lib.signals import build_signals
+    rep = {"window": {"start": "2026-04-08", "end": "2026-07-07"},
+           "profile": {"name": "Acme", "domain": "acme.com", "public": False, "ticker": None},
+           "sources": {
+               "careers": {"status": "active", "ats": "ashby", "board_url": "b",
+                           "listed_total": 10, "posted_in_window": 5,
+                           "dept_concentration": [["Sales", 3]],
+                           "senior_roles": [{"title": "VP Sales", "date": "2026-05-01", "url": "u"}],
+                           "note": "ATS survivorship caveat."},
+               "news": {"status": "active", "noisy": True, "signals": [
+                   {"title": "Acme raises $10M Series A", "outlet": "TC", "date": "2026-06-01", "url": "n"}]},
+           }}
+    rep["sources_active"] = [k for k, v in rep["sources"].items() if v.get("status") == "active"]
+    rep["sources_total"] = len(rep["sources"])
+    rep["footer"] = build_footer(rep)
+    rep["signals"] = build_signals(rep)
+    return rep
+
+
+class TestRenderMd(unittest.TestCase):
+    def setUp(self):
+        from lib.render_md import render_md
+        self.rep = _full_report()
+        self.md = render_md(self.rep)
+
+    def test_footer_verbatim_last(self):
+        self.assertTrue(self.md.rstrip().endswith(self.rep["footer"]))
+
+    def test_first_top_signal_is_highest_score(self):
+        top = [r for r in self.rep["signals"] if r["type"] not in {"tech_stack", "open_roles", "data_caveat"}]
+        self.assertIn(top[0]["claim"], self.md.split("## By category")[0])
+
+    def test_excluded_types_not_in_top(self):
+        top_section = self.md.split("## Top signals")[1].split("## By category")[0]
+        self.assertNotIn("open roles posted in-window", top_section)  # open_roles excluded
+
+    def test_source_note_survives_in_coverage(self):
+        self.assertIn("ATS survivorship caveat.", self.md)
+
+    def test_low_confidence_marker(self):
+        self.assertIn("⚠ entity-check", self.md)  # noisy news → low conf
+
+    def test_no_ansi(self):
+        self.assertNotIn("\x1b", self.md)
+
+
+class TestBlogPaths(unittest.TestCase):
+    def test_post_link_paths(self):
+        from lib.blog import _POST_LINK
+        self.assertTrue(_POST_LINK.search('href="/resources/some-guide"'))
+        self.assertTrue(_POST_LINK.search('href="/case-studies/acme-inc"'))
+        self.assertTrue(_POST_LINK.search('href="/customers/acme-story"'))
+        self.assertIsNone(_POST_LINK.search('href="/pricing"'))
+        self.assertIsNone(_POST_LINK.search('href="/about"'))
+
+
 class TestFooter(unittest.TestCase):
     """#10: skipped/not-run excluded from denominator; error≠empty."""
 
@@ -367,6 +490,19 @@ class TestFooter(unittest.TestCase):
         self.assertIn("edgar —", f)
         self.assertIn("github —", f)
         self.assertIn("1/3 applicable", f)  # skipped + missing excluded from denominator
+        self.assertNotIn("paid:", f)  # no paid source ran → no paid line
+
+    def test_footer_paid_line(self):
+        report = {"sources": {
+            "careers": {"status": "active", "posted_in_window": 9},
+            "exa": {"status": "active", "count": 8, "calls": 1},
+            "pdl": {"status": "active", "count": 20, "credits_used": 20},
+            "blog": {"status": "active", "count": 5, "firecrawl_credits": 1},
+        }}
+        f = build_footer(report)
+        self.assertIn("paid: exa 1 call", f)
+        self.assertIn("firecrawl 1 credit", f)
+        self.assertIn("pdl 20 credits", f)
 
 
 if __name__ == "__main__":

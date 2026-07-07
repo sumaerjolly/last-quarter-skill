@@ -32,8 +32,17 @@ out every source concurrently and returns structured JSON in ~7 seconds. Run it 
 directory containing this SKILL.md:
 
 ```bash
-python3 engine/last_quarter.py {domain} --name "{Company}" --today {YYYY-MM-DD} --json
+python3 engine/last_quarter.py {domain} --name "{Company}" --today {YYYY-MM-DD} --emit md
 ```
+
+**Recommended flow — `--emit md`:** the engine renders a complete, deterministic report
+skeleton (ranked Top signals, By-category, Coverage, verbatim footer). **Your job is to EDIT
+it, not compose from scratch:** entity-check and drop any `⚠ entity-check` items, tighten
+prose, re-rank with context (the engine's ranking is a coarse floor — a director req may
+outrank an acquisition in the raw order; fix that). Keep the footer verbatim and citations
+inline. Use `--emit json` for the machine-readable `signals[]`; `--emit compact` for a quick
+human scan. Progress prints to stderr (`--quiet` to silence); the footer's `paid:` line shows
+exactly what each paid key spent.
 
 - `--today` = today's date (so the window is deterministic). Omit to use the system date.
 - `--keywords "fintech OR banking"` — **required for common-word names** (Increase, Ramp,

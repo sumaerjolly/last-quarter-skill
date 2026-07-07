@@ -29,11 +29,12 @@ def _parse(path: Path) -> dict:
 
 def load_env() -> None:
     engine = Path(__file__).resolve().parent.parent  # engine/
-    candidates = []
-    if os.getenv("LAST_QUARTER_ENV"):
-        candidates.append(Path(os.environ["LAST_QUARTER_ENV"]))
-    candidates += [engine / ".env", engine.parent / ".env",
-                   Path.home() / ".config" / "last-quarter" / ".env"]
+    override = os.getenv("LAST_QUARTER_ENV")
+    if override:
+        candidates = [Path(override)]  # explicit override → ONLY that file (even if empty)
+    else:
+        candidates = [engine / ".env", engine.parent / ".env",
+                      Path.home() / ".config" / "last-quarter" / ".env"]
     for path in candidates:
         for k, v in _parse(path).items():
             if v and not os.getenv(k):  # real env vars + earlier files win

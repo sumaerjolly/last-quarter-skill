@@ -14,15 +14,25 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from datetime import date
 
 from lib import edgar
 from lib.careers import token_candidates
 from lib.config import load_env
 from lib.registry import SOURCE_ORDER, SOURCES, Ctx
+from lib.render_md import render_md
 from lib.signals import build_signals
 from lib.window import make_window, parse_dt
+
+_PROG_SYM = {"active": "✓", "empty": "✗", "error": "⚠", "skipped": "—"}
+
+
+def _progress_line(key: str, v: dict) -> str:
+    st = v.get("status", "empty")
+    cnt = v.get("count", v.get("posted_in_window"))
+    detail = f" ({cnt} in-window)" if st == "active" and cnt is not None else f" ({st})"
+    return f"  {_PROG_SYM.get(st, '✗')} {key}{detail}"
 
 
 def _fmt_date(value) -> str:
@@ -51,14 +61,29 @@ def build_footer(report: dict) -> str:
         cnt = v.get("count", v.get("posted_in_window"))
         show = f" {cnt}" if status == "active" and cnt is not None else ""
         parts.append(f"{k} {_SYM.get(status, '✗')}{show}")
+    # Paid-spend transparency: cost visibility IS trust for an OSS tool touching your keys.
+    spend = []
+    if s.get("exa", {}).get("calls"):
+        spend.append(f"exa {s['exa']['calls']} call")
+    if s.get("blog", {}).get("firecrawl_credits"):
+        spend.append(f"firecrawl {s['blog']['firecrawl_credits']} credit(s)")
+    if s.get("pdl", {}).get("credits_used"):
+        spend.append(f"pdl {s['pdl']['credits_used']} credits")
+    paid_line = f"\n└─ paid: {' · '.join(spend)}" if spend else ""
     return (f"---\n✅ sources reported back — {active}/{attempted} applicable\n"
-            f"└─ {' · '.join(parts)}\n---")
+            f"└─ {' · '.join(parts)}{paid_line}\n---")
 
 
 def run(domain: str, name: str, today: date, use_gdelt=True, use_github=True,
-        keywords: str | None = None) -> dict:
+        keywords: str | None = None, quiet: bool = False) -> dict:
     load_env()  # auto-load API keys from .env (real env vars still win); safe no-op if none
     window = make_window(today)
+
+    def log(msg):  # progress → stderr only (stdout stays pipe-clean)
+        if not quiet:
+            print(msg, file=sys.stderr)
+
+    log(f"last-quarter · {name} ({domain}) · {window['start']} → {window['end']}")
 
     # Profile & route first: EDGAR ticker lookup decides public vs private.
     cik_info = edgar.lookup_cik(name)
@@ -78,13 +103,21 @@ def run(domain: str, name: str, today: date, use_gdelt=True, use_github=True,
     results = {}
     with ThreadPoolExecutor(max_workers=max(1, len(active_sources))) as pool:
         futs = {pool.submit(src.run, ctx): src.key for src in active_sources}
-        for fut in futs:
-            key = futs[fut]
-            try:
-                results[key] = fut.result(timeout=40)
-            except Exception as e:
-                results[key] = {"source": key, "status": "error",
-                                "error": str(e) or type(e).__name__}
+        try:
+            for fut in as_completed(futs, timeout=45):
+                key = futs[fut]
+                try:
+                    results[key] = fut.result()
+                except Exception as e:
+                    results[key] = {"source": key, "status": "error",
+                                    "error": str(e) or type(e).__name__}
+                log(_progress_line(key, results[key]))
+        except TimeoutError:
+            pass
+        for fut, key in futs.items():  # any source that didn't finish → honest error
+            if key not in results:
+                results[key] = {"source": key, "status": "error", "error": "timeout"}
+                log(_progress_line(key, results[key]))
 
     active = [k for k, v in results.items() if v.get("status") == "active"]
     report = {
@@ -171,7 +204,10 @@ def main():
     ap.add_argument("--today", help="Override today (YYYY-MM-DD) for the window")
     ap.add_argument("--keywords", help="Disambiguating news terms for common-word names, "
                                        'e.g. "fintech OR banking OR payments"')
-    ap.add_argument("--json", action="store_true", help="Emit raw JSON")
+    ap.add_argument("--emit", choices=["compact", "json", "md"], default="compact",
+                    help="output format (default: compact)")
+    ap.add_argument("--json", action="store_true", help="alias for --emit json")
+    ap.add_argument("--quiet", action="store_true", help="suppress stderr progress")
     ap.add_argument("--no-gdelt", action="store_true")
     ap.add_argument("--no-github", action="store_true")
     a = ap.parse_args()
@@ -181,10 +217,13 @@ def main():
     today = date.fromisoformat(a.today) if a.today else date.today()
 
     report = run(dom, name, today, use_gdelt=not a.no_gdelt, use_github=not a.no_github,
-                 keywords=a.keywords)
-    if a.json:
+                 keywords=a.keywords, quiet=a.quiet)
+    emit = "json" if a.json else a.emit
+    if emit == "json":
         json.dump(report, sys.stdout, indent=2, default=str)
         print()
+    elif emit == "md":
+        print(render_md(report))
     else:
         print(compact(report))
 
