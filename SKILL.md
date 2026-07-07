@@ -188,6 +188,10 @@ applicable / routed off, excluded from the denominator), e.g.:}
 
 **Rules that make it trustworthy:**
 - **Inline source + date on every claim.** Never a lump of sources at the end.
+- **Cite news as "{Title} — {outlet} · {date}".** Lead with the outlet (from the signal's
+  `source`/`outlet`), not the raw link — Google News URLs are opaque `news.google.com/...`
+  redirects that resolve in-browser but can't be eyeballed. Outlet + clean title + date is
+  the trustworthy citation; the link is just the click target.
 - **Primary sources beat aggregators.** ATS, EDGAR, company blog, press releases first.
   A funding or headcount number from Crunchbase/Sacra/Tracxn/Built In alone is
   **labeled "aggregator, unverified"** — never stated as fact.

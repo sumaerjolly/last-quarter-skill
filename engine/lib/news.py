@@ -59,11 +59,20 @@ def _google_news(name: str, window: dict, keywords: str | None) -> list[dict]:
         link = (item.findtext("link") or "").strip()
         pub = (item.findtext("pubDate") or "").strip()
         src_el = item.find("{http://www.w3.org/2005/Atom}source") or item.find("source")
-        source = (src_el.text if src_el is not None else "") or ""
+        outlet = (src_el.text if src_el is not None else "") or ""
+        outlet_url = (src_el.get("url") if src_el is not None else "") or ""
         if bucket(pub, window) == "in_window":  # drop undated items (don't ship as "last 90d")
-            out.append({"title": title, "url": link, "date": pub,
-                        "outlet": source, "via": "google_news"})
+            out.append({"title": _clean_title(title, outlet), "url": link, "date": pub,
+                        "outlet": outlet, "outlet_url": outlet_url, "via": "google_news"})
     return out
+
+
+def _clean_title(title: str, outlet: str) -> str:
+    """Google News titles are 'Headline - Outlet' — strip the trailing outlet so citations
+    read cleanly (and the Google News link's opacity matters less when outlet is explicit)."""
+    if outlet and title.endswith(" - " + outlet):
+        return title[: -(len(outlet) + 3)].rstrip()
+    return title
 
 
 def _gdelt(name: str, window: dict) -> list[dict]:

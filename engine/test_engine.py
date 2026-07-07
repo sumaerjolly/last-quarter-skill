@@ -206,6 +206,12 @@ class TestNewsCommonWordFilter(unittest.TestCase):
     def test_event_filter_needs_a_verb(self):
         self.assertIsNone(news._EVENT.search("Golden Gate Bridge toll increase Wednesday"))
 
+    def test_clean_title_strips_outlet(self):
+        self.assertEqual(news._clean_title("Datadog launches Bits AI - SiliconANGLE", "SiliconANGLE"),
+                         "Datadog launches Bits AI")
+        self.assertEqual(news._clean_title("No outlet suffix here", "TechCrunch"),
+                         "No outlet suffix here")
+
 
 class TestEdgarMatching(unittest.TestCase):
     """#2: normalized-exact name match — no wrong-entity public routing."""
