@@ -199,7 +199,8 @@ def compact(report: dict) -> str:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("domain")
+    ap.add_argument("domain", nargs="?", help="company domain (omit only with --diagnose)")
+    ap.add_argument("--diagnose", action="store_true", help="health-check all integrations, exit")
     ap.add_argument("--name", help="Display name (default: derived from domain)")
     ap.add_argument("--today", help="Override today (YYYY-MM-DD) for the window")
     ap.add_argument("--keywords", help="Disambiguating news terms for common-word names, "
@@ -211,6 +212,15 @@ def main():
     ap.add_argument("--no-gdelt", action="store_true")
     ap.add_argument("--no-github", action="store_true")
     a = ap.parse_args()
+
+    if a.diagnose:
+        from lib.config import load_env
+        from lib.diagnose import render
+        load_env()
+        print(render())
+        return
+    if not a.domain:
+        ap.error("domain is required (or use --diagnose)")
 
     dom = a.domain.replace("https://", "").replace("http://", "").split("/")[0]
     name = a.name or dom.split(".")[0].replace("-", " ").title()
