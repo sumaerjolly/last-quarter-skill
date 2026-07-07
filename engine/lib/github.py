@@ -8,9 +8,16 @@ from .http import fetch_json
 from .identity import registrable_domain
 from .window import bucket
 
-_HDRS = {"Accept": "application/vnd.github+json"}
-if os.getenv("GITHUB_TOKEN"):
-    _HDRS["Authorization"] = f"Bearer {os.environ['GITHUB_TOKEN']}"
+def _hdrs():
+    """Read GITHUB_TOKEN lazily (after config.load_env has run), not at import time."""
+    h = {"Accept": "application/vnd.github+json"}
+    tok = os.getenv("GITHUB_TOKEN")
+    if tok:
+        h["Authorization"] = f"Bearer {tok}"
+    return h
+
+
+_HDRS = _hdrs()  # rebuilt per collect() below; module-level kept for any external refs
 
 
 def _resolve_org(candidates: list[str], domain: str):
@@ -51,6 +58,8 @@ def _new_repos(repos: list[dict], window: dict) -> list[dict]:
 
 
 def collect(org_candidates: list[str], window: dict, domain: str) -> dict:
+    global _HDRS
+    _HDRS = _hdrs()  # pick up GITHUB_TOKEN loaded by config.load_env
     org, repos, status = _resolve_org(org_candidates, domain)
     if not repos:
         if status == "error":

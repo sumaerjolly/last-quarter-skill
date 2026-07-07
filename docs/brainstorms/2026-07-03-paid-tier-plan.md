@@ -67,6 +67,22 @@ Fixes the hiring *trajectory* we cut (ATS survivorship bias) with real joiners +
 - **Trustpilot / G2** — review volume + rating trend + themes = customer sentiment/health.
 - **Glassdoor** — employee sentiment (risk/morale).
 
+## Key management / config loading (for OSS users)
+
+Every paid collector reads its key from the environment (`os.getenv("EXA_API_KEY")` etc.)
+and is skipped if absent — no key, no call, no cost. But OSS users shouldn't have to edit
+their shell profile or `source` anything, so the engine **auto-loads a `.env` file on
+startup**. Load order (first hit wins per var; a var already in the real environment is
+NEVER overwritten):
+1. `$LAST_QUARTER_ENV` (explicit path override)
+2. `./.env` next to the engine / skill dir (dev + symlinked-skill case; gitignored)
+3. `~/.config/last-quarter/.env` (the standard user config location — last30days pattern)
+
+So the OSS quickstart is one line: `echo 'EXA_API_KEY=...' >> ~/.config/last-quarter/.env`,
+then `/last-quarter stripe.com` picks it up. Real env vars still take precedence (CI/advanced
+users). Loader is stdlib, ~15 lines, runs before any collector. Keys: EXA_API_KEY,
+FIRECRAWL_API_KEY, PDL_API_KEY, APIFY_API_TOKEN, GITHUB_TOKEN (optional, raises GH rate limit).
+
 ## Integration layer
 - **Printing Press** (mvanhorn, last30days author) — credit-aware CLI + MCP wrappers with
   cost-estimate/budget guardrails. Confirmed to wrap **Sumble**; does NOT wrap Crustdata.

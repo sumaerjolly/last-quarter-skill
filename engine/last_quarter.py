@@ -19,6 +19,7 @@ from datetime import date
 
 from lib import edgar
 from lib.careers import token_candidates
+from lib.config import load_env
 from lib.registry import SOURCE_ORDER, SOURCES, Ctx
 from lib.signals import build_signals
 from lib.window import make_window, parse_dt
@@ -56,6 +57,7 @@ def build_footer(report: dict) -> str:
 
 def run(domain: str, name: str, today: date, use_gdelt=True, use_github=True,
         keywords: str | None = None) -> dict:
+    load_env()  # auto-load API keys from .env (real env vars still win); safe no-op if none
     window = make_window(today)
 
     # Profile & route first: EDGAR ticker lookup decides public vs private.

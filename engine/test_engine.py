@@ -10,6 +10,20 @@ from lib.signals import build_signals
 from last_quarter import build_footer
 
 
+class TestConfig(unittest.TestCase):
+    def test_parse_env_file(self):
+        import pathlib
+        import tempfile
+        from lib import config
+        p = pathlib.Path(tempfile.mktemp(suffix=".env"))
+        p.write_text("# comment\nA_KEY=xyz\nQ_EMPTY=\nB_KEY='quoted'\nbad line\n")
+        d = config._parse(p)
+        self.assertEqual(d["A_KEY"], "xyz")
+        self.assertEqual(d["B_KEY"], "quoted")   # quotes stripped
+        self.assertEqual(d["Q_EMPTY"], "")       # empty parsed; load_env skips empties
+        self.assertNotIn("bad line", d)
+
+
 class TestFirecrawl(unittest.TestCase):
     def test_unavailable_without_key(self):
         import os
