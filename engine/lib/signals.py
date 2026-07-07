@@ -101,6 +101,18 @@ def build_signals(report: dict) -> list[dict]:
                 confidence="unverified", date=_d(it.get("date")),
                 url=it.get("discussion") or it.get("url"))
 
+    # --- PDL (paid): actual new hires ---
+    pd = s.get("pdl", {})
+    if pd.get("status") == "active":
+        rollup = ", ".join(f"{d}:{n}" for d, n in pd.get("dept_rollup", []))
+        if rollup:
+            add("new_hires_rollup", "hiring", f"Recent joiners (approx.): {rollup}",
+                "pdl", confidence="aggregator")
+        for h in pd.get("senior_hires", []):
+            when = f" ({h['start']})" if h.get("start") else ""
+            add("new_hire", "leadership", f"{h.get('name')} joined as {h.get('title')}{when}",
+                "pdl", confidence="aggregator", date=_d(h.get("start")), url=h.get("linkedin"))
+
     # --- EDGAR filings ---
     e = s.get("edgar", {})
     if e.get("status") == "active":

@@ -10,6 +10,26 @@ from lib.signals import build_signals
 from last_quarter import build_footer
 
 
+class TestPDL(unittest.TestCase):
+    def test_senior_detection(self):
+        from lib.pdl import _is_senior
+        self.assertTrue(_is_senior({"vp"}, "VP Sales"))
+        self.assertTrue(_is_senior(set(), "Head of People"))
+        self.assertTrue(_is_senior({"director"}, "Director, Product"))
+        self.assertFalse(_is_senior({"senior"}, "Senior Software Engineer"))  # IC, not senior
+        self.assertFalse(_is_senior(set(), "Account Executive"))
+
+    def test_unavailable_without_key(self):
+        import os
+        from lib import pdl
+        old = os.environ.pop("PDL_API_KEY", None)
+        try:
+            self.assertFalse(pdl.available())
+        finally:
+            if old:
+                os.environ["PDL_API_KEY"] = old
+
+
 class TestConfig(unittest.TestCase):
     def test_parse_env_file(self):
         import pathlib

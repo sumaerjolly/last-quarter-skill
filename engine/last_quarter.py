@@ -129,6 +129,16 @@ def compact(report: dict) -> str:
         for r in c.get("recent_roles", [])[:5]:
             L.append(f"          - {_fmt_date(r.get('date'))} "
                      f"{r['title']} [{r.get('department') or ''}]")
+    pd = s.get("pdl", {})
+    if pd.get("status") == "active":
+        L.append(f"  NEW HIRES (PDL, approx.)  {pd.get('count')} joiners · "
+                 f"{', '.join(f'{d}:{n}' for d, n in pd.get('dept_rollup', [])[:5])}")
+        for h in pd.get("senior_hires", [])[:5]:
+            L.append(f"          + {str(h.get('start') or '?')[:7]} {h.get('name')} "
+                     f"— {h.get('title')}")
+        if pd.get("note"):
+            L.append(f"          ↳ {pd['note']}")
+
     for key, label in (("blog", "LAUNCH/BLOG"), ("exa", "NEWS(Exa)"), ("news", "NEWS(free)"),
                        ("status", "RISK/STATUS"), ("hackernews", "HN"),
                        ("edgar", "EDGAR"), ("github", "GITHUB")):

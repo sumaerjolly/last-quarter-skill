@@ -223,6 +223,10 @@ Paid upgrades (self-serve keys only — activate automatically when the env var 
   shell) and **listing-only, never per-post** (≤2 credits/company). Recovers post
   titles/URLs → customer-wins + competitive + topics; **dates unavailable** from a rendered
   listing (labeled as such — not for launch recency).
+- **`PDL_API_KEY` → `pdl` source (BUILT):** actual recent NEW HIRES — the signal free
+  can't get (careers shows only open reqs). Named senior joiners with LinkedIn URLs + a
+  "Sales +6, Eng +3" dept rollup. Domain-anchored (entity-precise), capped at 20 records/
+  run, month-precision, labeled "recent joiners (approx.)". `confidence: aggregator`.
 - Planned: **Apify** (LinkedIn/Twitter/Trustpilot).
 Details in references/sources.md.
 
