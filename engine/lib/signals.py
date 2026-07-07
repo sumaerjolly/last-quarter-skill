@@ -67,6 +67,15 @@ def build_signals(report: dict) -> list[dict]:
                 f"news/{it.get('outlet') or 'google-news'}", confidence=conf,
                 date=_d(it.get("date")), url=it.get("url"))
 
+    # --- Exa (paid): entity-resolved news, real URLs ---
+    ex = s.get("exa", {})
+    if ex.get("status") == "active":
+        conf = "low" if ex.get("noisy") else "unverified"
+        for it in ex.get("signals", []):
+            add("news", "news", it.get("title"),
+                f"exa/{it.get('outlet') or 'web'}", confidence=conf,
+                date=_d(it.get("date")), url=it.get("url"))
+
     # --- blog / changelog ---
     b = s.get("blog", {})
     if b.get("status") == "active":

@@ -207,9 +207,15 @@ already produce a real report (verified: even a thin Series-A returns ~13 roles,
 launch, and a positioning shift). Keys deepen, they aren't required. Always end with
 "sources active: N of M" and what a key would add — **never return an empty report.**
 
-Paid upgrades: **Firecrawl** (JS-rendered pages), **Exa** (neural date-filtered news),
-**Apify** (LinkedIn posts + headcount trend), **PredictLeads** (job/news/tech signals
-per domain). Details in references/sources.md.
+Paid upgrades (self-serve keys only — activate automatically when the env var is set):
+- **`EXA_API_KEY` → `exa` source (BUILT):** entity-resolved, date-filtered news with real
+  publisher URLs — fixes common-word name collisions (Reflow≠Reflow Medical) and the opaque
+  Google-News-URL problem. Distinctive names are clean out-of-box; for common-word names it
+  drops same-name companies' own domains, sets `noisy:true`, and recommends `--keywords
+  "<what they do>"` (which cleans it fully). Prefer `exa` signals over free `news` when both
+  are present.
+- Planned: **Firecrawl** (JS-rendered pages), **Apify** (LinkedIn/Twitter/Trustpilot).
+Details in references/sources.md.
 
 ## Common Mistakes
 

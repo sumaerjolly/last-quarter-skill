@@ -127,7 +127,7 @@ def compact(report: dict) -> str:
         for r in c.get("recent_roles", [])[:5]:
             L.append(f"          - {_fmt_date(r.get('date'))} "
                      f"{r['title']} [{r.get('department') or ''}]")
-    for key, label in (("blog", "LAUNCH/BLOG"), ("news", "NEWS"),
+    for key, label in (("blog", "LAUNCH/BLOG"), ("exa", "NEWS(Exa)"), ("news", "NEWS(free)"),
                        ("status", "RISK/STATUS"), ("hackernews", "HN"),
                        ("edgar", "EDGAR"), ("github", "GITHUB")):
         v = s.get(key, {})

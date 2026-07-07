@@ -5,9 +5,33 @@ Run from the engine/ dir:  python3 -m unittest test_engine -v
 import unittest
 from datetime import date
 
-from lib import careers, competitive, customer_wins, edgar, github, identity, jd_mining, news, window
+from lib import careers, competitive, customer_wins, edgar, exa, github, identity, jd_mining, news, window
 from lib.signals import build_signals
 from last_quarter import build_footer
+
+
+class TestExaClassify(unittest.TestCase):
+    """Entity classification for Exa results (the common-word collision guard)."""
+
+    def test_same_name_company_domain_is_collision(self):
+        # reflowmedical.com is a DIFFERENT company that happens to contain "reflow"
+        self.assertEqual(exa.classify_result(
+            "https://reflowmedical.com/pr", "Reflow Medical Announces Trial", "", "Reflow", "reflow.ai"),
+            "collision")
+
+    def test_neutral_outlet_naming_company_is_kept(self):
+        self.assertEqual(exa.classify_result(
+            "https://pitchbook.com/x", "Reflow.ai 2026 Company Profile", "", "Reflow", "reflow.ai"),
+            "keep")
+
+    def test_own_domain_always_kept(self):
+        self.assertEqual(exa.classify_result(
+            "https://reflow.ai/blog/x", "Anything", "", "Reflow", "reflow.ai"), "keep")
+
+    def test_unrelated_result_dropped(self):
+        self.assertEqual(exa.classify_result(
+            "https://techcrunch.com/x", "Convey closes $38M round", "automation startup", "Reflow", "reflow.ai"),
+            "drop")
 
 
 class TestCompetitive(unittest.TestCase):

@@ -55,3 +55,22 @@ def fetch_json(url: str, **kw):
         return code, json.loads(body)
     except Exception:
         return code, None
+
+
+def post_json(url: str, payload: dict, *, headers: dict | None = None, timeout: int = 25):
+    """POST JSON, parse JSON response. Returns (status_code, obj_or_None). For paid APIs."""
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=data, method="POST",
+        headers={"User-Agent": UA, "Content-Type": "application/json",
+                 "Accept": "application/json", **(headers or {})})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, json.loads(resp.read() or b"null")
+    except urllib.error.HTTPError as e:
+        try:
+            return e.code, json.loads(e.read() or b"null")
+        except Exception:
+            return e.code, None
+    except Exception:
+        return 0, None

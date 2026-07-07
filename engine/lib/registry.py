@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
-from . import blog, careers, edgar, github, hackernews, news, status
+from . import blog, careers, edgar, exa, github, hackernews, news, status
 
 
 @dataclass
@@ -36,6 +36,9 @@ SOURCES: list[Source] = [
     Source("careers", "free", lambda c: careers.collect(c.domain, c.name, c.window)),
     Source("news", "free",
            lambda c: news.collect(c.name, c.window, use_gdelt=c.use_gdelt, keywords=c.keywords)),
+    Source("exa", "paid",  # entity-resolved news; key-gated
+           lambda c: exa.collect(c.name, c.domain, c.window, keywords=c.keywords),
+           applies=lambda c: exa.available()),
     Source("blog", "free", lambda c: blog.collect(c.domain, c.window, brand=c.name)),
     Source("status", "free", lambda c: status.collect(c.domain, c.window)),
     Source("hackernews", "free", lambda c: hackernews.collect(c.name, c.domain, c.window)),
