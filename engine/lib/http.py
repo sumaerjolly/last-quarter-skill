@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 import urllib.error
 import urllib.request
 
-# SEC requires a UA with contact info; a real browser-ish UA avoids some 403s elsewhere.
-UA = "last-quarter-skill/1.0 (ABM signal research; contact sumaerjolly@gmail.com)"
+# SEC requires a UA with contact info. OSS users can set LAST_QUARTER_CONTACT to their own
+# email; default points at the repo (acceptable identifier, no personal data).
+_CONTACT = os.getenv("LAST_QUARTER_CONTACT",
+                     "github.com/sumaerjolly/last-quarter-skill")
+UA = f"last-quarter/1.0 (ABM signal research; {_CONTACT})"
 
 _LAST_HIT: dict[str, float] = {}
 

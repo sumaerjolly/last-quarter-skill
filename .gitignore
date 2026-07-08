@@ -5,3 +5,6 @@ __pycache__/
 .claude/settings.local.json
 *.json.local
 .gstack/
+
+# internal working docs — not for the public repo
+docs/
