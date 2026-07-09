@@ -56,8 +56,9 @@ exactly what each paid key spent.
 - `--keywords "fintech OR banking"` — **required for common-word names** (Increase, Ramp,
   Notion…) or news is unfilterable noise. The engine flags `noisy: true` when it applies.
 - Drop `--json` for a human-readable `compact` summary while debugging.
-- **Paid keys (optional):** the engine auto-loads a `.env` on startup — drop keys in
-  `~/.config/last-quarter/.env` (or `./.env` next to the engine): `EXA_API_KEY`,
+- **Paid keys (optional):** the engine auto-loads a `.env` on startup from (first found):
+  `$LAST_QUARTER_ENV`, the **skill/repo root `.env`** (`~/.claude/skills/last-quarter/.env`),
+  `engine/.env`, then `~/.config/last-quarter/.env`. Drop keys in any: `EXA_API_KEY`,
   `FIRECRAWL_API_KEY`, `PDL_API_KEY`, `APIFY_API_TOKEN`. Real env vars take precedence.
   No key → that source is silently skipped (free tier stands alone).
 

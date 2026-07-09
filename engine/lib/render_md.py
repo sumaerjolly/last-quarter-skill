@@ -31,9 +31,20 @@ def render_md(report: dict) -> str:
          f"**Profile:** {prof} · sources active: {', '.join(active) or 'none'} "
          f"({len(active)}/{report['sources_total']})", ""]
 
-    # --- Top signals: top 8 by score, excluding stack/open-roles/caveats ---
+    # --- Top signals: top 8 by score, EXCLUDING stack/open-roles/caveats, and capped at
+    # 2 per type so a cluster of one kind (e.g. 18 status incidents) can't flood the list
+    # and bury the flagship launch. ---
     L.append("## Top signals")
-    top = [r for r in sig if r["type"] not in _TOP_EXCLUDE][:8]
+    top, per_type = [], {}
+    for r in sig:
+        if r["type"] in _TOP_EXCLUDE:
+            continue
+        if per_type.get(r["type"], 0) >= 2:
+            continue
+        per_type[r["type"]] = per_type.get(r["type"], 0) + 1
+        top.append(r)
+        if len(top) >= 8:
+            break
     if not top:
         L.append("_No ranked signals surfaced this window._")
     for i, r in enumerate(top, 1):
@@ -64,6 +75,16 @@ def render_md(report: dict) -> str:
     if ws.get("status") == "active":
         L.append("- **Observed on site:** " + " · ".join(
             f"{cat}: {', '.join(tools)}" for cat, tools in (ws.get("by_category") or {}).items()))
+    # Launches / posts — render blog + entity-resolved news so the flagship isn't hidden.
+    _blog = s.get("blog", {})
+    posts = (_blog.get("signals", []) if _blog.get("status") == "active" else [])
+    news_sigs = [r for r in sig if r["category"] == "news"][:4]
+    if posts or news_sigs:
+        L.append(f"- **Product / launches:** {len(posts)} blog/changelog posts"
+                 + (" — e.g. " + "; ".join(p.get("title", "")[:55] for p in posts[:3]) if posts else ""))
+        for r in news_sigs:
+            warn = " ⚠" if r["confidence"] == "low" else ""
+            L.append(f"  - News: {r['claim'][:80]} ({_cite(r)}){warn}")
     pd = s.get("pdl", {})
     if pd.get("status") == "active":
         roll = ", ".join(f"{d}:{n}" for d, n in pd.get("dept_rollup", []))

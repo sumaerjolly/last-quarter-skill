@@ -211,7 +211,10 @@ def collect(domain: str, name: str | None, window: dict) -> dict:
         board, discovered_via = _discover_board(domain)
 
     if not board:
-        return {"source": "careers", "status": "empty", "tried": tried, "signals": []}
+        return {"source": "careers", "status": "empty", "tried": tried, "signals": [],
+                "note": "No public ATS board resolved (custom/JS careers page, or none) — hiring "
+                        "NOT measured this run (distinct from 'no hiring'). A PDL key recovers "
+                        "actual recent joiners even when the board is dark."}
 
     # Ownership sanity check: if the board reports a company name (Greenhouse does) that
     # shares no token with the requested name or domain slug, it may be a squatted slug.
