@@ -1,11 +1,39 @@
 """SEC EDGAR collector — public companies only. Verified 2026-07-01."""
 from __future__ import annotations
 
+import json
+import time
+from pathlib import Path
+
 from .http import fetch_json
 from .identity import norm_company
 
 # ok=None until first attempt; True if the ticker file loaded, False if the fetch failed.
 _TICKERS_CACHE = {"data": None, "ok": None}
+
+# The ~1MB ticker file rarely changes — cache it locally so we don't hit SEC every run
+# (SEC throttles bursts), and public/private detection survives a rate-limit.
+_CACHE_FILE = Path.home() / ".config" / "last-quarter" / "cache" / "sec_tickers.json"
+_CACHE_MAX_AGE = 7 * 86400
+
+
+def _read_cache(fresh_only: bool):
+    try:
+        if _CACHE_FILE.exists():
+            if fresh_only and (time.time() - _CACHE_FILE.stat().st_mtime) >= _CACHE_MAX_AGE:
+                return None
+            return json.loads(_CACHE_FILE.read_text())
+    except Exception:
+        pass
+    return None
+
+
+def _write_cache(data: dict):
+    try:
+        _CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _CACHE_FILE.write_text(json.dumps(data))
+    except Exception:
+        pass
 
 
 def tickers_ok() -> bool | None:
@@ -22,11 +50,20 @@ def lookup_cik(name: str) -> dict | None:
     while still matching 'Datadog' -> 'Datadog, Inc.'
     """
     if _TICKERS_CACHE["ok"] is None:
-        code, data = fetch_json("https://www.sec.gov/files/company_tickers.json")
-        if code == 200 and isinstance(data, dict) and data:
-            _TICKERS_CACHE["data"], _TICKERS_CACHE["ok"] = data, True
+        cached = _read_cache(fresh_only=True)
+        if cached:
+            _TICKERS_CACHE["data"], _TICKERS_CACHE["ok"] = cached, True
         else:
-            _TICKERS_CACHE["data"], _TICKERS_CACHE["ok"] = {}, False  # transport/parse fail
+            code, data = fetch_json("https://www.sec.gov/files/company_tickers.json")
+            if code == 200 and isinstance(data, dict) and data:
+                _write_cache(data)
+                _TICKERS_CACHE["data"], _TICKERS_CACHE["ok"] = data, True
+            else:
+                stale = _read_cache(fresh_only=False)  # SEC throttled → use stale over failing
+                if stale:
+                    _TICKERS_CACHE["data"], _TICKERS_CACHE["ok"] = stale, True
+                else:
+                    _TICKERS_CACHE["data"], _TICKERS_CACHE["ok"] = {}, False
     data = _TICKERS_CACHE["data"]
     if not data:
         return None

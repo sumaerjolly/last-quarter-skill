@@ -1,16 +1,20 @@
 # last-quarter
 
-**Point it at a company domain → get a cited report of what they actually did last quarter.**
-Product launches, hiring, funding, leadership changes, expansion, incidents, competitive
-moves — every claim carries a source URL and a date, so an SDR/AE can pick a real "why now"
-for outbound. Inspired by [last30days](https://github.com/mvanhorn/last30days-skill).
+**An agent skill: point your AI agent at a company domain → get a cited report of what they
+actually did last quarter.** Product launches, hiring, funding, leadership changes, expansion,
+incidents, competitive moves — every claim carries a source URL and a date, so an SDR/AE can
+pick a real "why now" for outbound. Inspired by
+[last30days](https://github.com/mvanhorn/last30days-skill).
 
-Works **free out of the box** (no keys, no `pip install`, stdlib Python 3.11+). Add optional
-self-serve API keys and it gets sharper.
+Install it in Claude Code (or any agent that reads a `SKILL.md`), then:
 
-```bash
-python3 engine/last_quarter.py stripe.com --emit md
 ```
+/last-quarter stripe.com
+```
+
+The agent runs a **stdlib Python engine** (no `pip install`, Python 3.11+) that fans out ~9
+free sources, then edits the deterministic report the engine produces. Works **free out of the
+box** — add optional self-serve API keys and it gets sharper.
 
 ## Why
 
@@ -64,27 +68,33 @@ Hacker News · SEC EDGAR · GitHub releases · website technographics (~65 finge
 No key set → that source is silently skipped. The footer's `paid:` line shows exactly what
 each key spent per run.
 
-## Setup
+## Install
 
+It's a self-contained Agent Skill: a `SKILL.md` (instructions) + a stdlib engine, no deps.
+
+**Claude Code** — drop it where Claude discovers skills:
 ```bash
-git clone https://github.com/sumaerjolly/last-quarter-skill && cd last-quarter-skill
-python3 engine/last_quarter.py airops.com --emit md      # zero config, free tier
+git clone https://github.com/sumaerjolly/last-quarter-skill
+ln -s "$PWD/last-quarter-skill" ~/.claude/skills/last-quarter
 ```
+Then in any Claude Code session: `/last-quarter stripe.com` (or "prep me for a call with
+Stripe"). Claude reads `SKILL.md`, runs the engine, and writes the report.
 
-Keys are optional. Drop them in `~/.config/last-quarter/.env` (or `./.env`) — see
-`.env.example`. Real environment variables take precedence.
+**Codex / Cursor / any agent** — clone it and point your agent at `SKILL.md` (e.g. reference
+it from `AGENTS.md`, or paste its path). The skill tells the agent exactly how to run the
+engine and shape the output.
 
-### As a Claude Code skill
+**Keys are optional.** Put self-serve API keys in `~/.config/last-quarter/.env` (see
+`.env.example`); the engine auto-loads them. Real environment variables take precedence. No
+keys → the free tier runs, fully.
 
+## Run it directly (no agent)
+
+The engine is a plain CLI too:
 ```bash
-ln -s "$PWD" ~/.claude/skills/last-quarter
+python3 engine/last_quarter.py stripe.com --emit md      # zero config, free tier
 ```
-
-Then `/last-quarter stripe.com` runs the engine and writes the report.
-
-## Usage
-
-```bash
+```
 last_quarter.py {domain} [--name "Company"] [--today YYYY-MM-DD] [--keywords "descriptor"]
                 [--emit compact|json|md] [--quiet] [--diagnose]
 ```
