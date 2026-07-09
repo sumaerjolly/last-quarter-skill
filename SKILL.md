@@ -1,6 +1,10 @@
 ---
 name: last-quarter
-description: Use when researching what a single company did over the last ~90 days to find outbound/ABM angles — product launches, hiring, funding, leadership changes, expansion, or risk signals — for an SDR or AE preparing cold outreach or account research ("why now", trigger events, buying signals, "what happened at X recently", "prep me for a call with").
+description: Use when researching what a single company did over the last ~90 days to find outbound/ABM angles — product launches, hiring, funding, leadership changes, expansion, or risk signals — for an SDR or AE preparing cold outreach or account research ("why now", trigger events, buying signals, "what happened at X recently", "prep me for a call with"). Also for competitor tracking (point it at a rival's domain).
+user-invocable: true
+argument-hint: 'last-quarter stripe.com | last-quarter reflow.ai --keywords "workflow intelligence"'
+allowed-tools: Bash, Read
+homepage: https://github.com/sumaerjolly/last-quarter-skill
 ---
 
 # Last Quarter
@@ -27,13 +31,17 @@ with departments and post dates, for free. Always prefer the API.
 
 ## How to Run (engine first)
 
-**Default path — run the engine.** A stdlib-only Python engine (no `pip install`) fans
-out every source concurrently and returns structured JSON in ~7 seconds. Run it from the
-directory containing this SKILL.md:
+**Default path — run the engine.** A stdlib-only Python engine (no `pip install`, Python
+3.11+) fans out every source concurrently in ~10-20s. The engine lives at
+`engine/last_quarter.py` next to this SKILL.md — when installed as the `/last-quarter`
+skill that is `~/.claude/skills/last-quarter/engine/last_quarter.py`:
 
 ```bash
-python3 engine/last_quarter.py {domain} --name "{Company}" --today {YYYY-MM-DD} --emit md
+python3 ~/.claude/skills/last-quarter/engine/last_quarter.py {domain} \
+  --name "{Company}" --today {YYYY-MM-DD} --emit md
 ```
+
+(From a cloned repo instead, use `engine/last_quarter.py` relative to the repo root.)
 
 **Recommended flow — `--emit md`:** the engine renders a complete, deterministic report
 skeleton (ranked Top signals, By-category, Coverage, verbatim footer). **Your job is to EDIT
