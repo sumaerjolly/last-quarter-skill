@@ -1,120 +1,122 @@
 # last-quarter
 
-**An agent skill: point your AI agent at a company domain → get a cited report of what they
-actually did last quarter.** Product launches, hiring, funding, leadership changes, expansion,
-incidents, competitive moves — every claim carries a source URL and a date, so an SDR/AE can
-pick a real "why now" for outbound. Inspired by
-[last30days](https://github.com/mvanhorn/last30days-skill).
-
-Install it in Claude Code (or any agent that reads a `SKILL.md`), then:
+**Point your AI agent at a company domain → get a cited report of what they actually did
+last quarter.** Product launches, hiring, funding, leadership changes, expansion, incidents,
+competitive moves — every claim carries a source URL and a date. Built for SDRs/AEs hunting a
+real "why now" for outbound — or point it at a **competitor's** domain and it reads as a
+tracking dossier. Inspired by [last30days](https://github.com/mvanhorn/last30days-skill).
 
 ```
-/last-quarter stripe.com
+/last-quarter linear.app
 ```
-
-The agent runs a **stdlib Python engine** (no `pip install`, Python 3.11+) that fans out ~9
-free sources, then edits the deterministic report the engine produces. Works **free out of the
-box** — add optional self-serve API keys and it gets sharper.
-
-## Why
-
-Free careers/news/filings/status data is scattered across a dozen APIs, and generic "research
-this company" prompts drift into hallucinated or same-name-collision garbage. `last-quarter`
-goes to **structured primary sources** (ATS JSON, SEC EDGAR, RSS, status pages), scores and
-ranks the signals, and hands you a report where **every line is cited** — plus a normalized
-`signals[]` JSON array so you can pipe it into your own enrichment/outbound tooling.
-
-**Two audiences, one command:** point it at a *prospect* for outbound research, or at a
-*competitor's* domain — every signal reads as competitor tracking (they took a rival's
-customers, someone launched against them, who they're bracketed with).
-
-## What you get (free tier)
-
 ```
-🗓  last-quarter · Linear (linear.app)  ·  2026-04-10 → 2026-07-09
-    profile: private
+🗓  last-quarter · Linear (linear.app) · 2026-04-10 → 2026-07-09
 
-  HIRING  ashby · 24 listed, 14 posted in-window · GTM:7, Product:6, Operations:1
-  STACK   Languages: TypeScript, GraphQL, React · Data: PostgreSQL, Redis · Cloud: GCP, Kubernetes
+  HIRING  ashby · 24 listed, 14 posted in-window · GTM:7, Product:6
   GEO     4 of 14 in-window roles are EMEA-based — possible EMEA expansion.
-  NEW-INIT  "we're building the product development system for teams and agents" [Staff Fullstack]
-  SITE  Framework: Next.js · Infra: Cloudflare
-  LAUNCH/BLOG  18 in-window
-  NEWS  ...   RISK/STATUS  ...   HN  ...   GITHUB  ...
+  NEW-INIT "we're building the product development system for teams and agents" [Staff Eng]
+  STACK   TypeScript, GraphQL, React · PostgreSQL, Redis · GCP, Kubernetes · OpenAI
+  LAUNCH/BLOG  18 in-window   ·   HN  11   ·   GITHUB  30 releases
   ✅ sources reported back — 6/8 applicable
 ```
 
-Signal types, all cited: **hiring** (open reqs, dept mix, senior/leadership reqs, geo
-expansion), **JD-mined tech stack + stated priorities + new-team initiatives**, **product**
-(blog/changelog, GitHub releases, net-new repos), **traction** (customer wins from case
-studies), **news**, **risk** (status-page incidents), **HN discussion**, **SEC filings**
-(public cos), **observed website technographics** (what's installed on their site), and
-**competitive dynamics**.
+Free out of the box: **no keys, no signup, no `pip install`** — just Python 3.11+ (already on
+modern Macs) and any AI agent. Optional self-serve keys make it sharper.
 
-## Sources
+## Install (60 seconds)
 
-**Free (no keys):** careers (Ashby / Greenhouse / Lever + board discovery) · JD mining ·
-Google News + GDELT · blog/changelog (RSS + HTML fallback) · status-page incidents ·
-Hacker News · SEC EDGAR · GitHub releases · website technographics (~65 fingerprints).
+**Easiest — let your agent do it.** Paste this into Claude Code, Codex, Cursor, or any
+agent with shell access:
 
-**Optional paid (self-serve keys — free tier stands alone without them):**
+> Install the last-quarter skill: clone https://github.com/sumaerjolly/last-quarter-skill
+> to a skills folder, read its SKILL.md, and verify it works by running the engine's
+> `--diagnose` command.
+
+**Claude Code** — one command:
+```bash
+git clone https://github.com/sumaerjolly/last-quarter-skill ~/.claude/skills/last-quarter
+```
+Then in any chat: `/last-quarter stripe.com` — or just ask *"prep me for a call with Stripe."*
+
+**Codex** — clone it, then register it in your `AGENTS.md` so Codex knows when to use it:
+```bash
+git clone https://github.com/sumaerjolly/last-quarter-skill ~/.codex/skills/last-quarter
+echo '- For company research / outbound prep ("what happened at X last quarter"), read and follow ~/.codex/skills/last-quarter/SKILL.md' >> ~/.codex/AGENTS.md
+```
+Then ask Codex: *"what happened at stripe.com last quarter?"*
+
+**Cursor / Windsurf / any other agent** — clone anywhere and point the agent at `SKILL.md`
+(reference it from your rules/`AGENTS.md` file, or paste its path into the chat). The
+SKILL.md contains complete instructions: the agent runs the engine and edits the report it
+produces.
+
+**Update later:** `git -C <install-path> pull`
+
+<details>
+<summary><b>For AI agents installing this</b> (deterministic steps)</summary>
+
+1. `git clone https://github.com/sumaerjolly/last-quarter-skill <skills-dir>/last-quarter`
+   — for Claude Code, `<skills-dir>` is `~/.claude/skills`.
+2. Verify: `python3 <skills-dir>/last-quarter/engine/last_quarter.py --diagnose`
+   — expect `[OK]` rows for ashby/greenhouse/google_news/hackernews/statuspage/sec_edgar/
+   github; paid rows show `— no key` (normal).
+3. To run: read `<skills-dir>/last-quarter/SKILL.md` and follow it exactly. The engine
+   command is `python3 <skills-dir>/last-quarter/engine/last_quarter.py {domain} --emit md`.
+4. Optional keys live in `~/.config/last-quarter/.env` (see `.env.example` in the repo).
+</details>
+
+## Optional: add keys, get superpowers
+
+The free tier stands alone. Three **self-serve** keys deepen it (no sales calls):
 
 | Key | Unlocks |
 |---|---|
-| `EXA_API_KEY` | Entity-resolved news (fixes common-word name collisions; real publisher URLs) |
-| `FIRECRAWL_API_KEY` | Renders JS-shell blogs the free tier can't read (cost-capped) |
-| `PDL_API_KEY` | **Actual new hires** — named senior joiners + LinkedIn + dept rollup |
+| `EXA_API_KEY` | Entity-resolved news — fixes common-word name collisions, real publisher URLs |
+| `FIRECRAWL_API_KEY` | Renders JS-only blogs the free tier can't read (cost-capped) |
+| `PDL_API_KEY` | **Actual new hires** — named senior joiners + LinkedIn + department rollup |
 
-No key set → that source is silently skipped. The footer's `paid:` line shows exactly what
-each key spent per run.
-
-## Install
-
-It's a self-contained Agent Skill: a `SKILL.md` (instructions) + a stdlib engine, no deps.
-
-**Claude Code** — drop it where Claude discovers skills:
 ```bash
-git clone https://github.com/sumaerjolly/last-quarter-skill
-ln -s "$PWD/last-quarter-skill" ~/.claude/skills/last-quarter
+mkdir -p ~/.config/last-quarter && cp .env.example ~/.config/last-quarter/.env
+# fill in whichever keys you have — missing ones are silently skipped
 ```
-Then in any Claude Code session: `/last-quarter stripe.com` (or "prep me for a call with
-Stripe"). Claude reads `SKILL.md`, runs the engine, and writes the report.
+Every run's footer shows exactly what each key spent (`paid: exa 1 call · pdl 20 credits`).
 
-**Codex / Cursor / any agent** — clone it and point your agent at `SKILL.md` (e.g. reference
-it from `AGENTS.md`, or paste its path). The skill tells the agent exactly how to run the
-engine and shape the output.
+## What it collects
 
-**Keys are optional.** Put self-serve API keys in `~/.config/last-quarter/.env` (see
-`.env.example`); the engine auto-loads them. Real environment variables take precedence. No
-keys → the free tier runs, fully.
+| Signal | Source (free) |
+|---|---|
+| Open roles, senior/leadership reqs, dept mix, geo expansion | ATS APIs (Ashby/Greenhouse/Lever + board discovery) |
+| Tech stack, stated priorities, **new-team initiatives** | Mined from job-description text |
+| Launches & product direction | Blog/changelog RSS+HTML, GitHub releases & net-new repos |
+| Customer wins | Case-study titles |
+| News | Google News + GDELT (entity-filtered) |
+| Risk | Status-page incident history |
+| Community/discussion | Hacker News |
+| Filings (public cos) | SEC EDGAR |
+| Website technographics (~65 tools incl. ABM/intent) | Script/header fingerprints |
+| Competitive moves (displacement, attacks, comparisons) | Mined across all titles |
 
-## Run it directly (no agent)
+Everything also lands in a normalized **`signals[]` JSON array** (typed, dated, cited,
+confidence-labeled, ranked) — pipe it into your own enrichment or outbound tooling:
+`--emit json`.
 
-The engine is a plain CLI too:
+## Run it without an agent
+
+The engine is a plain CLI:
 ```bash
-python3 engine/last_quarter.py stripe.com --emit md      # zero config, free tier
+python3 engine/last_quarter.py stripe.com --emit md
 ```
-```
-last_quarter.py {domain} [--name "Company"] [--today YYYY-MM-DD] [--keywords "descriptor"]
-                [--emit compact|json|md] [--quiet] [--diagnose]
-```
-
-- `--emit md` — deterministic ranked report (recommended). `--emit json` — the machine
-  interface (`signals[]`). `--emit compact` — quick human scan.
-- `--keywords "what they do"` — needed for common-word names (Ramp, Notion, Reflow) so news
-  disambiguates.
-- `--diagnose` — health-check every integration (support: "run this and paste the output").
+Flags: `--keywords "what they do"` (needed for common-word names like Ramp/Notion) ·
+`--emit compact|json|md` · `--today YYYY-MM-DD` · `--quiet` · `--diagnose`
+(troubleshooting: run it and paste the output).
 
 ## Design principles
 
-- **Every claim cited** (URL + date) — trust is the product; a stale/wrong signal in an email
-  gets a rep burned.
-- **Primary sources over aggregators** — ATS/EDGAR/RSS, not scraped guesses.
-- **Precision over recall** — entity-verified (a company named "Mercury" won't get a defense
-  contractor's filings; "Reflow" won't get Reflow Medical's news).
-- **Honest degradation** — never an empty report; the footer says exactly what ran, what a key
-  would add, and what each paid call cost.
+- **Every claim cited** (URL + date) — a wrong signal in a cold email burns the sender.
+- **Primary sources over aggregators** — ATS JSON, EDGAR, RSS, status pages; not scraped guesses.
+- **Entity-verified** — "Mercury" won't get a defense contractor's filings; "Reflow" won't get
+  Reflow Medical's news.
+- **Honest degradation** — never a fake-complete report; the footer says exactly what ran,
+  what a key would add, and what each paid call cost.
 
-## License
-
-MIT. Not affiliated with any data provider. Respect each source's terms.
+MIT licensed. Not affiliated with any data provider — respect each source's terms.
