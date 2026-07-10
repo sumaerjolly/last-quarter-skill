@@ -2,11 +2,20 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 
 from .http import fetch_json
 from .identity import norm_company
+
+
+def _sec_headers() -> dict:
+    """SEC fair-access REQUIRES 'ToolName contact@email' in the User-Agent — a UA without
+    an email-shaped contact gets 403 'Rate Threshold' (diagnosed 2026-07-10; noreply-style
+    addresses are rejected too). Contact overridable via LAST_QUARTER_CONTACT."""
+    contact = os.getenv("LAST_QUARTER_CONTACT", "sumaertesting@gmail.com")
+    return {"User-Agent": f"last-quarter-skill {contact}"}
 
 # ok=None until first attempt; True if the ticker file loaded, False if the fetch failed.
 _TICKERS_CACHE = {"data": None, "ok": None}
@@ -54,7 +63,8 @@ def lookup_cik(name: str) -> dict | None:
         if cached:
             _TICKERS_CACHE["data"], _TICKERS_CACHE["ok"] = cached, True
         else:
-            code, data = fetch_json("https://www.sec.gov/files/company_tickers.json")
+            code, data = fetch_json("https://www.sec.gov/files/company_tickers.json",
+                                    headers=_sec_headers())
             if code == 200 and isinstance(data, dict) and data:
                 _write_cache(data)
                 _TICKERS_CACHE["data"], _TICKERS_CACHE["ok"] = data, True
@@ -92,7 +102,7 @@ def collect(name: str, window: dict, cik_info: dict | None) -> dict:
         # else who merely mentions the name.
         url = (f"https://efts.sec.gov/LATEST/search-index?q=&forms={form}&ciks={cik_padded}"
                f"&startdt={window['start']}&enddt={window['end']}")
-        code, data = fetch_json(url, headers={"Accept": "application/json"})
+        code, data = fetch_json(url, headers={"Accept": "application/json", **_sec_headers()})
         hits = ((data or {}).get("hits") or {}).get("hits") if isinstance(data, dict) else None
         for h in (hits or [])[:10]:
             src = h.get("_source", {})
