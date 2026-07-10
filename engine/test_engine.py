@@ -190,6 +190,16 @@ class TestSignals(unittest.TestCase):
         self.assertEqual(news["confidence"], "low")            # ambiguous → downgraded
         self.assertLess(sig.index(senior), sig.index(news))    # primary outranks collision news
 
+    def test_stale_event_not_boosted(self):  # publish-date != event-date
+        rep = self._win()
+        rep["sources"] = {"news": {"status": "active", "signals": [
+            {"title": "Acme raises $25M Series B", "outlet": "TC", "date": "2026-06-01", "url": "a"},
+            {"title": "Partner note: Acme recently raised $200M", "outlet": "TC", "date": "2026-06-01", "url": "b"}]}}
+        sig = build_signals(rep)
+        fresh = next(r for r in sig if "raises $25M" in r["claim"])
+        stale = next(r for r in sig if "recently raised" in r["claim"])
+        self.assertGreater(fresh["score"], stale["score"])  # stale ("recently") not boosted
+
     def test_deterministic(self):
         rep = self._win()
         rep["sources"] = {"status": {"status": "active", "signals": [

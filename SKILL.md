@@ -129,6 +129,14 @@ common-word *filter* didn't fire — YOU must still read each headline and drop 
 collisions (a metal band, a different company sharing the name, a "Show HN" of an unrelated
 tool). Do this even when `noisy` is false.
 
+**Publish-date ≠ event-date (critical for funding/M&A/leadership).** A news item's date is
+when the ARTICLE was published, not when the EVENT happened. An in-window article often just
+*mentions* an older event — e.g. a partner's press release saying "Tapcheck recently raised
+$225M" (the round closed months ago). Before presenting a funding round, acquisition, or exec
+change as a *this-quarter* trigger, confirm the event itself occurred in-window (the article
+usually says when); if the wording is "recently / previously / last year / had raised," treat
+it as **background/context, not a fresh "why now."** When unsure, don't date it as this quarter.
+
 **Expect thin news for private / non-newsy vertical SaaS** — RSS + GDELT often return
 almost nothing. When both are empty, **run one WebSearch pass** for
 `{company} funding OR layoffs OR "new VP" OR acquisition` to affirmatively check for

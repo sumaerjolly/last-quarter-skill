@@ -32,6 +32,11 @@ _TYPE_WEIGHT = {
 _EVENT_HIGH = re.compile(
     r"\b(raise[sd]?|raising|funding|series [a-e]|valuation|acqui\w+|merg\w+|appoint\w+|"
     r"names? new|joins? as|steps? down|resign\w*|layoff\w*|ipo)\b", re.I)
+# ...but NOT when the headline frames the event as OLD — an in-window article often just
+# *mentions* a past raise ("recently raised", "last year"). Publish-date != event-date.
+_STALE_EVENT = re.compile(
+    r"\b(recently|previously|already|had (?:raised|closed|secured)|last year|back in|"
+    r"in 20(?:2[0-5])|existing|to date|since (?:its )?found|earlier|prior|so far)\b", re.I)
 _CONF_MULT = {"primary": 1.0, "unverified": 0.8, "aggregator": 0.7, "low": 0.4}
 _CONF_RANK = {"primary": 3, "unverified": 2, "aggregator": 1, "low": 0}
 
@@ -54,8 +59,9 @@ def _recency(date_iso, window) -> float:
 
 def _score(rec: dict, window) -> float:
     w = _TYPE_WEIGHT.get(rec["type"], 2)
-    if rec["type"] == "news" and _EVENT_HIGH.search(rec.get("claim") or ""):
-        w = 5
+    claim = rec.get("claim") or ""
+    if rec["type"] == "news" and _EVENT_HIGH.search(claim) and not _STALE_EVENT.search(claim):
+        w = 5  # fresh high-stakes event; stale-worded ("recently raised") stays weight 3
     return round(w * _recency(rec["date"], window) * _CONF_MULT.get(rec["confidence"], 0.8), 2)
 
 
