@@ -6,7 +6,7 @@ import re
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
-from . import jd_mining
+from . import jd_mining, jsonld_jobs, workday
 from .http import fetch_json, fetch_text
 from .identity import brand_slug, norm_company, registrable_domain
 from .window import bucket
@@ -111,28 +111,87 @@ _ATS_LINK = {
 }
 _ATS_STOP = {"embed", "job", "job_board", "www", "for"}
 
+# Workday links carry (tenant, wd-number, optional path). Identity is the tenant.
+_WD_LINK = re.compile(
+    r"([a-z0-9][a-z0-9-]*)\.wd(\d+)\.myworkdayjobs\.com(/[^\s\"'<>]*)?", re.I)
+_LOCALE_RX = re.compile(r"^[a-z]{2}-[A-Za-z]{2}$")
+_WD_STOP = {"job", "jobs", "details", "wday", "cxs", "en", "d", "task"}
 
-def _discover_board(domain: str):
-    """Fallback when slug-guessing misses: crawl the company's own careers page for its
-    ATS board link. CONTAMINATION GUARD — accept only if the page references exactly ONE
-    distinct board (a company's own careers page links one board; an aggregator/blog links
-    many, e.g. remote.com surfaced 5 other companies' tokens)."""
+# ATSes we can DETECT but not yet parse — surface in the empty-state note instead of a blank ✗.
+_UNSUPPORTED_ATS = {
+    "iCIMS": re.compile(r"\.icims\.com", re.I),
+    "SuccessFactors": re.compile(r"successfactors\.com|sapsf\.com|/sfcareer", re.I),
+    "SmartRecruiters": re.compile(r"smartrecruiters\.com|careers\.smartrecruiters", re.I),
+    "Workable": re.compile(r"apply\.workable\.com", re.I),
+    "Recruitee": re.compile(r"\.recruitee\.com", re.I),
+    "Teamtailor": re.compile(r"\.teamtailor\.com", re.I),
+}
+
+
+def _wd_site_hint(path: str | None) -> str | None:
+    """Pull the Workday site slug out of a link path, skipping locales (en-US) and job routes."""
+    for seg in (path or "").split("/"):
+        seg = seg.strip()
+        if not seg or _LOCALE_RX.match(seg) or seg.lower() in _WD_STOP:
+            continue
+        return seg
+    return None
+
+
+def _discover_board(domain: str, window: dict):
+    """Fallback when slug-guessing misses: crawl the company's own careers page for its ATS
+    board link (Ashby/Greenhouse/Lever/Workday). CONTAMINATION GUARD — accept only if the page
+    references exactly ONE distinct board (a company's own careers page links one board; an
+    aggregator/blog links many, e.g. remote.com surfaced 5 other companies' tokens).
+
+    Returns (board, via, pages, unsupported): `pages` is {path: html} for the JSON-LD fallback
+    to reuse; `unsupported` names a detected-but-unparseable ATS (for the empty-state note)."""
     reg = registrable_domain(domain)
-    for path in ("/careers", "/jobs", ""):
-        code, html = fetch_text(f"https://{reg}{path}" if path else f"https://{reg}")
-        if code != 200 or not html:
+    paths = ("/careers", "/jobs", "")
+
+    def _get(path):
+        url = f"https://{reg}{path}" if path else f"https://{reg}"
+        code, html = fetch_text(url)
+        return path, (html if code == 200 else "")
+
+    with ThreadPoolExecutor(max_workers=len(paths)) as pool:
+        fetched = list(pool.map(_get, paths))
+    pages = {p: h for p, h in fetched}
+
+    unsupported = None
+    for path, html in fetched:
+        if not html:
             continue
         cands = set()
         for prov, rx in _ATS_LINK.items():
             for tok in rx.findall(html):
                 if tok.lower() not in _ATS_STOP:
                     cands.add((prov, tok.lower()))
+        wd_map = {}  # tenant -> (wd, site_hint); keyed by tenant so one board != many cands
+        for m in _WD_LINK.finditer(html):
+            tenant = m.group(1).lower()
+            cands.add(("workday", tenant))
+            wd_map.setdefault(tenant, (m.group(2), _wd_site_hint(m.group(3))))
+
         if len(cands) == 1:  # single board → trust it
             prov, tok = next(iter(cands))
-            board = _PARSERS[prov](tok)
-            if board:
-                return board, f"{prov}:{tok} (discovered on /{path.strip('/') or 'home'})"
-    return None, None
+            via = f"/{path.strip('/') or 'home'}"
+            if prov == "workday":
+                wd, hint = wd_map[tok]
+                board = workday.collect(tok, wd, hint, window)
+                if board:
+                    return board, f"workday:{tok} (discovered on {via})", pages, None
+            else:
+                board = _PARSERS[prov](tok)
+                if board:
+                    return board, f"{prov}:{tok} (discovered on {via})", pages, None
+
+        if unsupported is None:
+            for label, rx in _UNSUPPORTED_ATS.items():
+                if rx.search(html):
+                    unsupported = label
+                    break
+    return None, None, pages, unsupported
 
 
 # --- Geo rollup (Expansion signal) --------------------------------------------------
@@ -222,14 +281,24 @@ def collect(domain: str, name: str | None, window: dict) -> dict:
             break
 
     discovered_via = None
+    pages, unsupported = None, None
     if not board:  # slug guesses missed — try discovering the board from /careers
-        board, discovered_via = _discover_board(domain)
+        board, discovered_via, pages, unsupported = _discover_board(domain, window)
+
+    if not board:  # no ATS at all — try schema.org JobPosting markup on the pages we fetched
+        jl = jsonld_jobs.collect(domain, name, window, pages or {})
+        if jl:
+            board, discovered_via = jl, "json-ld (schema.org JobPosting)"
 
     if not board:
+        note = ("No public ATS board resolved (custom/JS careers page, or none) — hiring "
+                "NOT measured this run (distinct from 'no hiring'). A PDL key recovers "
+                "actual recent joiners even when the board is dark.")
+        if unsupported:
+            note = (f"Careers site runs {unsupported} (not yet supported by this engine). "
+                    + note)
         return {"source": "careers", "status": "empty", "tried": tried, "signals": [],
-                "note": "No public ATS board resolved (custom/JS careers page, or none) — hiring "
-                        "NOT measured this run (distinct from 'no hiring'). A PDL key recovers "
-                        "actual recent joiners even when the board is dark."}
+                "note": note}
 
     # Ownership sanity check: if the board reports a company name (Greenhouse does) that
     # shares no token with the requested name or domain slug, it may be a squatted slug.
@@ -249,6 +318,11 @@ def collect(domain: str, name: str | None, window: dict) -> dict:
     senior_roles = _senior_roles(in_window)
     # JD mining over ALL currently-listed roles (their live stack), zero extra fetches.
     mined = jd_mining.mine(jobs, brand=name or brand_slug(domain))
+    base_note = ("ATS lists only currently-open roles (survivorship bias); read as "
+                 "composition + freshness, not a clean growth delta. Tech stack + "
+                 "priorities mined from JD text (skill-context anchored).")
+    if board.get("note"):  # Workday lower-bound / JSON-LD caveat leads
+        base_note = f"{board['note']} {base_note}"
     return {
         "source": "careers",
         "status": "active",
@@ -269,9 +343,7 @@ def collect(domain: str, name: str | None, window: dict) -> dict:
         "tech_by_category": mined["tech_by_category"],
         "priorities": mined["priorities"],
         "initiatives": mined["initiatives"],
-        "note": "ATS lists only currently-open roles (survivorship bias); read as "
-                "composition + freshness, not a clean growth delta. Tech stack + "
-                "priorities mined from JD text (skill-context anchored).",
+        "note": base_note,
         "recent_roles": [
             {"title": j["title"], "department": j.get("department"),
              "location": j.get("location"), "date": j["date"], "url": j.get("url")}
