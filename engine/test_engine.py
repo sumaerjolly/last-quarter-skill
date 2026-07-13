@@ -625,5 +625,122 @@ class TestJsonSidecar(unittest.TestCase):
         self.assertTrue(md.rstrip().endswith(rep["footer"]))    # footer still the final block
 
 
+_WIN = {"start": "2026-04-14", "end": "2026-07-13",
+        "prior_start": "2026-01-14", "prior_end": "2026-04-14"}
+
+
+class TestWorkdayDates(unittest.TestCase):
+    def test_relative_date_conversion(self):
+        from datetime import date as _date
+        from lib.workday import _posted_date
+        today = _date(2026, 7, 13)
+        self.assertEqual(_posted_date("Posted Today", today), "2026-07-13")
+        self.assertEqual(_posted_date("Posted Yesterday", today), "2026-07-12")
+        self.assertEqual(_posted_date("Posted 3 Days Ago", today), "2026-07-10")
+        self.assertIsNone(_posted_date("Posted 30+ Days Ago", today))  # floor, not a date
+        self.assertIsNone(_posted_date("Just posted", today))
+        self.assertIsNone(_posted_date(None, today))
+
+    def test_site_candidates_hint_first(self):
+        from lib.workday import _site_candidates
+        c = _site_candidates("remitly", "Remitly_Careers")
+        self.assertEqual(c[0], "Remitly_Careers")
+        self.assertIn("Careers", c)
+
+
+class TestWorkdayCollect(unittest.TestCase):
+    def test_parses_paginates_and_drops_floor_dates(self):
+        import lib.workday as W
+
+        def _page(offset, posted):
+            return {"total": 45, "jobPostings": [
+                {"title": f"Role {i}", "externalPath": f"/job/x/R{i}",
+                 "locationsText": "Remote", "postedOn": posted}
+                for i in range(offset, min(offset + 20, 45))]}
+        pages = {0: _page(0, "Posted 2 Days Ago"), 20: _page(20, "Posted 40 Days Ago"),
+                 40: _page(40, "Posted 30+ Days Ago")}
+        calls = []
+
+        def fake_post(url, payload, *, headers=None, timeout=25):
+            calls.append(payload["offset"])
+            return 200, pages.get(payload["offset"])
+
+        def fake_fetch_json(url, **kw):
+            return 200, {"jobPostingInfo": {"jobDescription": "<p>Python and Go</p>",
+                                            "startDate": "2026-07-11"}}
+        orig = (W.post_json, W.fetch_json)
+        try:
+            W.post_json, W.fetch_json = fake_post, fake_fetch_json
+            board = W.collect("acme", "5", "Acme_Careers", _WIN)
+        finally:
+            W.post_json, W.fetch_json = orig
+        self.assertIsNotNone(board)
+        self.assertEqual(board["ats"], "workday")
+        self.assertEqual(board["token"], "acme:wd5:Acme_Careers")
+        self.assertEqual(len(board["jobs"]), 45)
+        self.assertEqual(sorted(set(calls)), [0, 20, 40])           # paginated every page
+        self.assertEqual(sum(1 for j in board["jobs"] if j["date"]), 40)  # 5 "30+" dropped
+        self.assertIn("LOWER BOUND", board["note"])
+
+
+class TestBoardDiscovery(unittest.TestCase):
+    def test_workday_link_and_site_hint(self):
+        from lib.careers import _WD_LINK, _wd_site_hint
+        m = _WD_LINK.search("https://remitly.wd5.myworkdayjobs.com/en-US/Remitly_Careers/job/x")
+        self.assertEqual((m.group(1), m.group(2)), ("remitly", "5"))
+        self.assertEqual(_wd_site_hint(m.group(3)), "Remitly_Careers")  # skips en-US + /job
+
+    def test_contamination_guard_two_distinct_boards(self):
+        import lib.careers as C
+        html = ('<a href="https://boards.greenhouse.io/foo">x</a>'
+                '<a href="https://acme.wd5.myworkdayjobs.com/Acme">y</a>')
+        orig = C.fetch_text
+        try:
+            C.fetch_text = lambda url, **kw: (200, html)
+            board, via, pages, unsup = C._discover_board("test.com", _WIN)
+        finally:
+            C.fetch_text = orig
+        self.assertIsNone(board)  # two distinct boards on one page → refuse
+
+    def test_unsupported_ats_surfaced(self):
+        import lib.careers as C
+        orig = C.fetch_text
+        try:
+            C.fetch_text = lambda url, **kw: (200, '<iframe src="https://acme.icims.com/jobs">')
+            _, _, _, unsup = C._discover_board("acme.com", _WIN)
+        finally:
+            C.fetch_text = orig
+        self.assertEqual(unsup, "iCIMS")
+
+
+class TestJsonLdJobs(unittest.TestCase):
+    def test_graph_wrapper_extraction(self):
+        from lib.jsonld_jobs import _extract
+        html = ('<script type="application/ld+json">'
+                '{"@graph":[{"@type":"JobPosting","title":"Eng","datePosted":"2026-06-01"}]}'
+                '</script>')
+        jps = _extract(html)
+        self.assertEqual(len(jps), 1)
+        self.assertEqual(jps[0]["title"], "Eng")
+
+    def test_entity_guard(self):
+        from lib.jsonld_jobs import _entity_ok
+        want = {"remitly"}
+        self.assertFalse(_entity_ok({"hiringOrganization": {"name": "Stripe Inc"}}, want))
+        self.assertTrue(_entity_ok({"hiringOrganization": {"name": "Remitly"}}, want))
+        self.assertTrue(_entity_ok({"title": "x"}, want))  # no org named → trust the page
+
+    def test_collect_listing_shape(self):
+        from lib.jsonld_jobs import collect
+        html = ('<script type="application/ld+json">'
+                '[{"@type":"JobPosting","title":"Backend Eng","datePosted":"2026-06-20","url":"/j/1"},'
+                '{"@type":"JobPosting","title":"PM","datePosted":"2026-06-21","url":"/j/2"}]</script>')
+        board = collect("acme.com", "Acme", _WIN, {"/careers": html})
+        self.assertEqual(board["ats"], "json-ld")
+        self.assertEqual(len(board["jobs"]), 2)
+        self.assertEqual({j["date"] for j in board["jobs"]}, {"2026-06-20", "2026-06-21"})
+        self.assertEqual({j["title"] for j in board["jobs"]}, {"Backend Eng", "PM"})
+
+
 if __name__ == "__main__":
     unittest.main()
