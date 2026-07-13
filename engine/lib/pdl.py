@@ -49,7 +49,8 @@ def collect(name: str, domain: str, window: dict) -> dict:
                 "note": "PDL rejected the key."}
     if code in (402, 429) or (isinstance(data, dict) and data.get("status") in (402, 429)):
         return {"source": "pdl", "status": "error",
-                "note": "PDL quota/credits exhausted or rate-limited."}
+                "note": "PDL quota/credits exhausted or rate-limited (free tier resets monthly) "
+                        "— new-hire data unavailable this run, not absent."}
     if code == 0 or not isinstance(data, dict):
         return {"source": "pdl", "status": "error", "error": f"PDL unreachable (code {code})",
                 "note": "PDL fetch failed — not confirmed empty."}
