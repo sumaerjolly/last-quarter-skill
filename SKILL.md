@@ -43,14 +43,21 @@ python3 ~/.claude/skills/last-quarter/engine/last_quarter.py {domain} \
 
 (From a cloned repo instead, use `engine/last_quarter.py` relative to the repo root.)
 
-**Recommended flow — `--emit md`:** the engine renders a complete, deterministic report
-skeleton (ranked Top signals, By-category, Coverage, verbatim footer). **Your job is to EDIT
-it, not compose from scratch:** entity-check and drop any `⚠ entity-check` items, tighten
-prose, re-rank with context (the engine's ranking is a coarse floor — a director req may
-outrank an acquisition in the raw order; fix that). Keep the footer verbatim and citations
-inline. Use `--emit json` for the machine-readable `signals[]`; `--emit compact` for a quick
-human scan. Progress prints to stderr (`--quiet` to silence); the footer's `paid:` line shows
-exactly what each paid key spent.
+**Recommended flow — run the engine ONCE with `--emit md`:** it renders a complete,
+deterministic report skeleton (ranked Top signals, By-category, Coverage, verbatim footer).
+**Your job is to EDIT it, not compose from scratch:** entity-check and drop any
+`⚠ entity-check` items, tighten prose, re-rank with context (the engine's ranking is a coarse
+floor — a director req may outrank an acquisition in the raw order; fix that). Keep the footer
+verbatim and citations inline. Progress prints to stderr (`--quiet` to silence); the footer's
+`paid:` line shows exactly what each paid key spent.
+
+**The full JSON is already on disk — do NOT run the engine a second time.** That single
+`--emit md` run also writes the complete report JSON (full `signals[]` + every source's raw
+detail) to a temp file, and prints its path two ways: an `📄 full engine JSON written to:`
+line on stderr, and an HTML comment `<!-- full engine JSON ... -->` just under the Profile
+line of the md. When you need a signal or field the md skeleton doesn't show, **`Read` that
+file** — never re-invoke the engine with `--emit json` (it re-runs every network source and
+wastes ~30-45s). `--emit compact` (also with a sidecar) is for a quick human scan.
 
 - `--today` = today's date (so the window is deterministic). Omit to use the system date.
 - `--keywords "fintech OR banking"` — **required for common-word names** (Increase, Ramp,

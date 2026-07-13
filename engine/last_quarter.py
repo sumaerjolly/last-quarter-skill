@@ -13,7 +13,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 import sys
+import tempfile
 from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from datetime import date
 
@@ -104,7 +107,7 @@ def run(domain: str, name: str, today: date, use_gdelt=True, use_github=True,
     with ThreadPoolExecutor(max_workers=max(1, len(active_sources))) as pool:
         futs = {pool.submit(src.run, ctx): src.key for src in active_sources}
         try:
-            for fut in as_completed(futs, timeout=45):
+            for fut in as_completed(futs, timeout=35):
                 key = futs[fut]
                 try:
                     results[key] = fut.result()
@@ -197,6 +200,38 @@ def compact(report: dict) -> str:
     return "\n".join(L)
 
 
+def write_json_sidecar(report: dict) -> str | None:
+    """Write the FULL report JSON to a deterministic temp path so a single `--emit md`
+    (or compact) run gives the agent both the readable report AND the complete signals[]
+    on disk — no second `--emit json` engine run needed. Path is stable per (domain, window
+    end) and overwritten on rerun. Returns the path, or None on any I/O failure."""
+    try:
+        dom = report["profile"]["domain"]
+        end = report["window"]["end"]
+        safe = re.sub(r"[^A-Za-z0-9._-]", "_", f"{dom}-{end}")
+        d = os.path.join(tempfile.gettempdir(), "last-quarter")
+        os.makedirs(d, exist_ok=True)
+        path = os.path.join(d, f"{safe}.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2, default=str)
+        return path
+    except Exception:
+        return None
+
+
+def _inject_sidecar_comment(md: str, path: str) -> str:
+    """Insert an HTML comment pointing at the full-JSON sidecar right under the Profile line
+    (near the top, NOT the end — the footer must stay the final block per the output
+    contract). Harmless when rendered."""
+    lines = md.split("\n")
+    comment = f"<!-- full engine JSON (complete signals[] + per-source detail): {path} -->"
+    for i, ln in enumerate(lines):
+        if ln.startswith("**Profile:**"):
+            lines.insert(i + 1, comment)
+            return "\n".join(lines)
+    return md  # Profile line not found — leave md untouched rather than risk the contract
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("domain", nargs="?", help="company domain (omit only with --diagnose)")
@@ -232,10 +267,19 @@ def main():
     if emit == "json":
         json.dump(report, sys.stdout, indent=2, default=str)
         print()
-    elif emit == "md":
-        print(render_md(report))
     else:
-        print(compact(report))
+        # One engine run serves both views: write the full JSON to a sidecar file so the
+        # agent reads detail from disk instead of re-invoking the engine with --emit json.
+        sidecar = write_json_sidecar(report)
+        if emit == "md":
+            md = render_md(report)
+            if sidecar:
+                md = _inject_sidecar_comment(md, sidecar)
+            print(md)
+        else:
+            print(compact(report))
+        if sidecar and not a.quiet:
+            print(f"📄 full engine JSON written to: {sidecar}", file=sys.stderr)
 
 
 if __name__ == "__main__":

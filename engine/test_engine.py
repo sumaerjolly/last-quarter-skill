@@ -557,5 +557,73 @@ class TestFooter(unittest.TestCase):
         self.assertIn("pdl 20 credits", f)
 
 
+class TestCareersProbePriority(unittest.TestCase):
+    """Concurrent 3-ATS probing must still select by FIXED priority (ashby>greenhouse>lever),
+    never by which future finished first — so output is deterministic."""
+
+    def test_ashby_wins_over_greenhouse(self):
+        import lib.careers as C
+        orig = (C._ashby, C._greenhouse, C._lever)
+        try:
+            C._ATS_PARSERS = [("ashby", lambda t: {"ats": "ashby"}),
+                              ("greenhouse", lambda t: {"ats": "greenhouse"}),
+                              ("lever", lambda t: None)]
+            board, tried = C._probe_token("acme")
+            self.assertEqual(board["ats"], "ashby")            # priority, not first-done
+            self.assertEqual(tried, ["ashby:acme", "greenhouse:acme", "lever:acme"])
+        finally:
+            C._ATS_PARSERS = [("ashby", orig[0]), ("greenhouse", orig[1]), ("lever", orig[2])]
+
+    def test_lever_wins_when_only_hit(self):
+        import lib.careers as C
+        orig = (C._ashby, C._greenhouse, C._lever)
+        try:
+            C._ATS_PARSERS = [("ashby", lambda t: None),
+                              ("greenhouse", lambda t: None),
+                              ("lever", lambda t: {"ats": "lever"})]
+            board, tried = C._probe_token("acme")
+            self.assertEqual(board["ats"], "lever")
+        finally:
+            C._ATS_PARSERS = [("ashby", orig[0]), ("greenhouse", orig[1]), ("lever", orig[2])]
+
+    def test_all_miss_returns_none(self):
+        import lib.careers as C
+        orig = (C._ashby, C._greenhouse, C._lever)
+        try:
+            C._ATS_PARSERS = [(n, lambda t: None) for n in ("ashby", "greenhouse", "lever")]
+            board, tried = C._probe_token("acme")
+            self.assertIsNone(board)
+            self.assertEqual(len(tried), 3)
+        finally:
+            C._ATS_PARSERS = [("ashby", orig[0]), ("greenhouse", orig[1]), ("lever", orig[2])]
+
+
+class TestJsonSidecar(unittest.TestCase):
+    """Lever 2: one --emit md run also writes the full report JSON to disk so the agent
+    never re-runs the engine with --emit json."""
+
+    def test_sidecar_writes_parseable_json(self):
+        import json
+        from last_quarter import write_json_sidecar
+        rep = _full_report()
+        path = write_json_sidecar(rep)
+        self.assertIsNotNone(path)
+        with open(path, encoding="utf-8") as f:
+            loaded = json.load(f)
+        self.assertIn("signals", loaded)
+        self.assertIn("footer", loaded)
+        self.assertEqual(loaded["profile"]["domain"], rep["profile"]["domain"])
+
+    def test_md_keeps_footer_last_and_has_sidecar_comment(self):
+        from lib.render_md import render_md
+        from last_quarter import _inject_sidecar_comment
+        rep = _full_report()
+        md = _inject_sidecar_comment(render_md(rep), "/tmp/last-quarter/x.json")
+        self.assertIn("<!-- full engine JSON", md)              # comment present
+        self.assertLess(md.index("<!-- full engine JSON"),      # near the top, under Profile
+                        md.index("## Top signals"))
+        self.assertTrue(md.rstrip().endswith(rep["footer"]))    # footer still the final block
+
+
 if __name__ == "__main__":
     unittest.main()
