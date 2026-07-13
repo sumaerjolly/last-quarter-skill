@@ -374,6 +374,7 @@ class TestEdgarMatching(unittest.TestCase):
             "1": {"cik_str": 1, "ticker": "MRCY", "title": "Mercury Systems Inc"},
             "2": {"cik_str": 2, "ticker": "RAMP", "title": "LiveRamp Holdings, Inc."},
             "3": {"cik_str": 3, "ticker": "WAVE", "title": "Wave Life Sciences Ltd."},
+            "4": {"cik_str": 4, "ticker": "RELY", "title": "Remitly Global, Inc."},
         }
 
     def tearDown(self):
@@ -391,6 +392,24 @@ class TestEdgarMatching(unittest.TestCase):
 
     def test_wave_not_life_sciences(self):
         self.assertIsNone(edgar.lookup_cik("Wave"))
+
+    def test_corporate_tail_match(self):
+        m = edgar.lookup_cik("Remitly")  # "Remitly" -> "Remitly Global, Inc." (RELY)
+        self.assertIsNotNone(m)
+        self.assertEqual(m["ticker"], "RELY")
+
+    def test_tail_allowlist_excludes_systems(self):
+        # "systems" is NOT an allowlisted tail even though it's the only candidate.
+        edgar._TICKERS_CACHE["data"] = {
+            "0": {"cik_str": 9, "ticker": "MRCY", "title": "Mercury Systems, Inc."}}
+        self.assertIsNone(edgar.lookup_cik("Mercury"))
+
+    def test_tail_match_requires_uniqueness(self):
+        # Two allowlisted-tail candidates for "Acme" → refuse, never guess.
+        edgar._TICKERS_CACHE["data"] = {
+            "0": {"cik_str": 10, "ticker": "ACG", "title": "Acme Global, Inc."},
+            "1": {"cik_str": 11, "ticker": "ACH", "title": "Acme Holdings Corp"}}
+        self.assertIsNone(edgar.lookup_cik("Acme"))
 
 
 class TestIdentity(unittest.TestCase):
@@ -522,6 +541,28 @@ class TestBlogPaths(unittest.TestCase):
         self.assertTrue(_POST_LINK.search('href="/customers/acme-story"'))
         self.assertIsNone(_POST_LINK.search('href="/pricing"'))
         self.assertIsNone(_POST_LINK.search('href="/about"'))
+
+
+class TestNewsroomBases(unittest.TestCase):
+    def test_bases_adds_news_and_press(self):
+        from lib.blog import _bases
+        b = _bases("remitly.com")
+        self.assertEqual(b[0], "https://remitly.com")            # main first
+        self.assertIn("https://news.remitly.com", b)
+        self.assertIn("https://press.remitly.com", b)
+
+    def test_bases_from_www_and_subdomain(self):
+        from lib.blog import _bases
+        self.assertEqual(_bases("www.acme.com")[0], "https://www.acme.com")
+        self.assertIn("https://news.acme.com", _bases("www.acme.com"))  # registrable, not www
+        self.assertIn("https://news.acme.com", _bases("blog.acme.com"))
+
+    def test_is_newsroom(self):
+        from lib.blog import _is_newsroom
+        self.assertTrue(_is_newsroom("https://news.remitly.com/feed"))
+        self.assertTrue(_is_newsroom("https://press.acme.com/rss.xml"))
+        self.assertFalse(_is_newsroom("https://acme.com/blog/rss.xml"))
+        self.assertFalse(_is_newsroom(""))
 
 
 class TestFooter(unittest.TestCase):

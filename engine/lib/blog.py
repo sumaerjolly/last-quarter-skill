@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from . import customer_wins, firecrawl_render
 from .http import fetch_text
+from .identity import registrable_domain
 from .window import bucket, parse_dt
 
 _POST_LINK = re.compile(
@@ -39,8 +40,20 @@ def _base(domain: str) -> str:
     return f"https://{d}"
 
 
+def _bases(domain: str) -> list[str]:
+    """Main site + newsroom/press subdomains. Many companies (Remitly, Stripe) split real
+    product news onto news.{domain}/press.{domain} while the main /blog is SEO marketing —
+    reading only the main base misses the launches. Main first so its feeds keep priority."""
+    reg = registrable_domain(domain)
+    bases = [_base(domain)]
+    for sub in (f"https://news.{reg}", f"https://press.{reg}"):
+        if sub not in bases:
+            bases.append(sub)
+    return bases
+
+
 def discover_feeds(base: str) -> list[str]:
-    pages = ("/blog", "/changelog", "/news", "/")
+    pages = ("/blog", "/changelog", "/news", "/newsroom", "/press", "/press-releases", "/")
     # Probe the landing pages concurrently; iterate results in page order so the
     # discovered-feed list (and its dedupe priority) is identical to sequential.
     with ThreadPoolExecutor(max_workers=len(pages)) as pool:
@@ -137,9 +150,19 @@ def _html_listing(base: str, window: dict) -> list[dict]:
     return [m for m in metas if m and bucket(m["date"], window) == "in_window"]
 
 
+def _is_newsroom(feed_url: str) -> bool:
+    host = urllib.parse.urlparse(feed_url or "").netloc.lower()
+    return host.startswith("news.") or host.startswith("press.")
+
+
 def collect(domain: str, window: dict, brand: str | None = None) -> dict:
-    base = _base(domain)
-    feeds = discover_feeds(base)
+    base = _base(domain)  # main base only for the COMMON_PATHS / html-listing / Firecrawl paths
+    # Discover feeds across main + newsroom/press subdomains concurrently; main-first order
+    # preserves the main site's feed priority in the deduped list.
+    bases = _bases(domain)
+    with ThreadPoolExecutor(max_workers=len(bases)) as pool:
+        per_base = list(pool.map(discover_feeds, bases))
+    feeds = list(dict.fromkeys(f for flist in per_base for f in flist))
     tried = list(feeds)
     feed_found = False
     items: list[dict] = []
@@ -192,12 +215,25 @@ def collect(domain: str, window: dict, brand: str | None = None) -> dict:
             date_warn = (f"{top_n}/{len(dated)} posts share the date {top_date} — likely a CMS "
                          f"migration reset; treat blog post dates as low-confidence.")
 
+    # Provenance: how many in-window posts came from a newsroom/press subdomain vs the
+    # marketing blog. The newsroom is where real product news lives — tell the agent.
+    news_items = [x for x in uniq if _is_newsroom(x.get("feed", ""))]
+    newsroom_url = news_items[0]["feed"] if news_items else None
+    prov = None
+    if news_items and len(news_items) < len(uniq):
+        news_host = urllib.parse.urlparse(newsroom_url).netloc
+        prov = (f"{len(news_items)} of {len(uniq)} in-window posts from {news_host} (newsroom); "
+                f"{len(uniq) - len(news_items)} from the marketing blog — prefer newsroom posts "
+                f"for product/launch claims.")
+    elif news_items:  # every post came from the newsroom
+        prov = f"All {len(uniq)} in-window posts from the newsroom ({urllib.parse.urlparse(newsroom_url).netloc})."
+
     if uniq and via == "firecrawl":
         note = (f"Rendered via Firecrawl ({fc_credits} credit(s)); post DATES UNAVAILABLE — "
                 f"recency not confirmed. Use for customer-wins / competitive / topics, not "
                 f"launch timing.")
     elif uniq:
-        note = date_warn
+        note = " ".join(p for p in (prov, date_warn) if p) or None
     elif feed_found:
         note = "Blog feed found but no posts in the last 90 days (quiet quarter)."
     else:
@@ -207,6 +243,7 @@ def collect(domain: str, window: dict, brand: str | None = None) -> dict:
         "source": "blog", "status": "active" if uniq else "empty",
         "count": len(uniq), "via": via if uniq else None,
         "feed_found": feed_found, "firecrawl_credits": fc_credits,
+        "newsroom_url": newsroom_url,
         "feeds_used": [i["feed"] for i in uniq if i.get("feed")][:1] or feeds,
         "note": note,
         "customer_wins": customer_wins.extract_customer_wins(uniq, brand=brand),
