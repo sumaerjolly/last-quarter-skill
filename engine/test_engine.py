@@ -426,6 +426,44 @@ class TestIdentity(unittest.TestCase):
         self.assertEqual(identity.norm_company("Mercury Systems Inc"), "mercury systems")
         self.assertEqual(identity.norm_company("Wave Life Sciences Ltd."), "wave life sciences")
 
+    def test_pick_brand_prefix_affinity(self):
+        # datadoghq slug, "Datadog" candidate → slug starts with candidate.
+        self.assertEqual(identity.pick_brand(["Datadog"], "datadoghq"), "Datadog")
+
+    def test_pick_brand_title_segment(self):
+        cands = ["Cloud Monitoring as a Service", "Datadog"]  # title split, brand is 2nd
+        self.assertEqual(identity.pick_brand(cands, "datadoghq"), "Datadog")
+
+    def test_pick_brand_strips_get_try_prefix(self):
+        self.assertEqual(identity.pick_brand(["Paddle"], "trypaddle"), "Paddle")
+
+    def test_pick_brand_rejects_marketing_copy(self):
+        self.assertIsNone(identity.pick_brand(["The Modern Observability Platform"], "datadoghq"))
+
+    def test_pick_brand_identity_case(self):
+        self.assertEqual(identity.pick_brand(["Stripe"], "stripe"), "Stripe")
+
+    def test_pick_brand_empty(self):
+        self.assertIsNone(identity.pick_brand([], "datadoghq"))
+        self.assertIsNone(identity.pick_brand(["ab"], "datadoghq"))  # too short
+
+    def test_derive_name_from_og_and_title(self):
+        cases = [
+            ('<meta property="og:site_name" content="Datadog">', "datadoghq.com", "Datadog"),
+            ('<meta content="Datadog" property="og:site_name">', "datadoghq.com", "Datadog"),  # order
+            ('<title>Cloud Monitoring as a Service | Datadog</title>', "datadoghq.com", "Datadog"),
+            ('<title>Nothing Relevant Here</title>', "datadoghq.com", None),  # no affinity → None
+        ]
+        orig = identity.fetch_text
+        try:
+            for html, dom, expect in cases:
+                identity.fetch_text = lambda url, **kw: (200, html)
+                self.assertEqual(identity.derive_name(dom), expect)
+            identity.fetch_text = lambda url, **kw: (0, "")  # homepage unreachable
+            self.assertIsNone(identity.derive_name("datadoghq.com"))
+        finally:
+            identity.fetch_text = orig
+
 
 class TestWindow(unittest.TestCase):
     def setUp(self):

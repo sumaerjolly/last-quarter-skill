@@ -20,7 +20,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from datetime import date
 
-from lib import edgar
+from lib import edgar, identity
 from lib.careers import token_candidates
 from lib.config import load_env
 from lib.registry import SOURCE_ORDER, SOURCES, Ctx
@@ -258,7 +258,16 @@ def main():
         ap.error("domain is required (or use --diagnose)")
 
     dom = a.domain.replace("https://", "").replace("http://", "").split("/")[0]
-    name = a.name or dom.split(".")[0].replace("-", " ").title()
+    slug_name = dom.split(".")[0].replace("-", " ").title()
+    if a.name:
+        name = a.name
+    else:
+        # The domain slug is NOT the brand (datadoghq -> "Datadog", trypaddle -> "Paddle").
+        # Derive from the homepage so EDGAR/news/careers get the real name, not the slug.
+        derived = identity.derive_name(dom)
+        name = derived or slug_name
+        if derived and derived != slug_name and not a.quiet:
+            print(f"name: {derived} (derived from homepage, not domain slug)", file=sys.stderr)
     today = date.fromisoformat(a.today) if a.today else date.today()
 
     report = run(dom, name, today, use_gdelt=not a.no_gdelt, use_github=not a.no_github,
