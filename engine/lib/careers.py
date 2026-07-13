@@ -4,6 +4,7 @@ from __future__ import annotations
 import html as _html
 import re
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 
 from . import jd_mining
 from .http import fetch_json, fetch_text
@@ -192,17 +193,31 @@ def _senior_roles(in_window: list[dict]) -> list[dict]:
     return out[:6]
 
 
+_ATS_PARSERS = [("ashby", _ashby), ("greenhouse", _greenhouse), ("lever", _lever)]
+
+
+def _probe_token(token: str):
+    """Probe all 3 ATSes for one token CONCURRENTLY, but select the winner by FIXED priority
+    (ashby > greenhouse > lever) — never by which finished first, so output is deterministic
+    and identical to the old sequential preference. Returns (board_or_None, tried_list)."""
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futs = {pname: pool.submit(fn, token) for pname, fn in _ATS_PARSERS}
+        results = {pname: fut.result() for pname, fut in futs.items()}
+    tried = [f"{pname}:{token}" for pname, _ in _ATS_PARSERS]
+    for pname, _ in _ATS_PARSERS:  # fixed priority order
+        if results[pname]:
+            return results[pname], tried
+    return None, tried
+
+
 def collect(domain: str, name: str | None, window: dict) -> dict:
     """Resolve the ATS board and summarize hiring signal. Careers = composition+freshness,
     NOT a clean this-90-vs-prior-90 delta (ATS returns only currently-open roles)."""
     tried = []
     board = None
     for token in token_candidates(domain, name):
-        for fn in (_ashby, _greenhouse, _lever):
-            board = fn(token)
-            tried.append(f"{fn.__name__.strip('_')}:{token}")
-            if board:
-                break
+        board, t = _probe_token(token)
+        tried += t
         if board:
             break
 

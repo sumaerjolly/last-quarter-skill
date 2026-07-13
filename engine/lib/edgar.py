@@ -64,7 +64,7 @@ def lookup_cik(name: str) -> dict | None:
             _TICKERS_CACHE["data"], _TICKERS_CACHE["ok"] = cached, True
         else:
             code, data = fetch_json("https://www.sec.gov/files/company_tickers.json",
-                                    headers=_sec_headers())
+                                    headers=_sec_headers(), timeout=20)  # ~1MB file
             if code == 200 and isinstance(data, dict) and data:
                 _write_cache(data)
                 _TICKERS_CACHE["data"], _TICKERS_CACHE["ok"] = data, True

@@ -27,7 +27,7 @@ def _throttle(key: str, min_gap: float) -> None:
     _LAST_HIT[key] = time.monotonic()
 
 
-def fetch(url: str, *, timeout: int = 12, headers: dict | None = None,
+def fetch(url: str, *, timeout: int = 7, headers: dict | None = None,
           throttle_key: str | None = None, min_gap: float = 0.0,
           maxbytes: int | None = None) -> tuple[int, bytes]:
     """GET a URL. Returns (status_code, body_bytes). Never raises on HTTP errors.
@@ -50,7 +50,7 @@ def fetch_text(url: str, **kw) -> tuple[int, str]:
     return code, body.decode("utf-8", "replace")
 
 
-def fetch_full(url: str, *, timeout: int = 12, headers: dict | None = None,
+def fetch_full(url: str, *, timeout: int = 10, headers: dict | None = None,
                maxbytes: int | None = None) -> tuple[int, bytes, dict]:
     """GET → (status, body_bytes, response_headers). Header names lowercased.
     Transport failure → (0, b'', {}). Never raises."""

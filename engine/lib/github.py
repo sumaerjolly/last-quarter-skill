@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 
 from .http import fetch_json
 from .identity import registrable_domain
@@ -69,18 +70,26 @@ def collect(org_candidates: list[str], window: dict, domain: str) -> dict:
         return {"source": "github", "status": "empty",
                 "note": "No GitHub org verifiably owned by this domain (org.blog must match) "
                         "— skipped to avoid a wrong-entity match."}
-    releases = []
-    for repo in repos[:8]:
+    top_repos = repos[:8]
+
+    def _fetch_releases(repo):
         name = repo.get("name")
         code, rels = fetch_json(
             f"https://api.github.com/repos/{org}/{name}/releases?per_page=10",
             headers=_HDRS)
-        for r in (rels or []) if isinstance(rels, list) else []:
-            if bucket(r.get("published_at"), window) == "in_window":
-                releases.append({
-                    "repo": name, "name": r.get("name") or r.get("tag_name"),
-                    "date": r.get("published_at"), "url": r.get("html_url"),
-                })
+        return name, rels
+
+    releases = []
+    # Fan out the per-repo release calls concurrently; .map preserves input (pushed) order
+    # so the assembled list is identical to the old sequential version before re-sort.
+    with ThreadPoolExecutor(max_workers=max(1, len(top_repos))) as pool:
+        for name, rels in pool.map(_fetch_releases, top_repos):
+            for r in (rels or []) if isinstance(rels, list) else []:
+                if bucket(r.get("published_at"), window) == "in_window":
+                    releases.append({
+                        "repo": name, "name": r.get("name") or r.get("tag_name"),
+                        "date": r.get("published_at"), "url": r.get("html_url"),
+                    })
     releases.sort(key=lambda x: str(x["date"]), reverse=True)
 
     by_repo = Counter(r["repo"] for r in releases)

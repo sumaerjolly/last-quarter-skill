@@ -40,9 +40,13 @@ def _base(domain: str) -> str:
 
 
 def discover_feeds(base: str) -> list[str]:
+    pages = ("/blog", "/changelog", "/news", "/")
+    # Probe the landing pages concurrently; iterate results in page order so the
+    # discovered-feed list (and its dedupe priority) is identical to sequential.
+    with ThreadPoolExecutor(max_workers=len(pages)) as pool:
+        fetched = list(pool.map(lambda p: (p, fetch_text(base + p)), pages))
     feeds = []
-    for page in ("/blog", "/changelog", "/news", "/"):
-        code, html = fetch_text(base + page)
+    for page, (code, html) in fetched:
         if code != 200:
             continue
         for tag in _ALT.findall(html):
@@ -110,11 +114,15 @@ def _html_listing(base: str, window: dict) -> list[dict]:
     """Free fallback for feedless sites (e.g. Webflow SPAs): scrape the /blog listing for
     post links, then fetch each post's page for its published date. No Firecrawl needed
     when content is server-rendered; reserve Firecrawl for true empty JS shells."""
+    pages = ("/blog", "/changelog", "/updates", "/news",
+             "/resources", "/customers", "/case-studies")
+    # Fetch the listing pages concurrently; iterate in page order so slug discovery
+    # order (and dedupe) matches the old sequential scan exactly.
+    with ThreadPoolExecutor(max_workers=len(pages)) as pool:
+        page_results = list(pool.map(lambda p: fetch_text(base + p), pages))
     slugs: list[str] = []
     seen = set()
-    for page in ("/blog", "/changelog", "/updates", "/news",
-                 "/resources", "/customers", "/case-studies"):
-        code, html = fetch_text(base + page)
+    for code, html in page_results:
         if code != 200:
             continue
         for path in _POST_LINK.findall(html):
@@ -141,10 +149,15 @@ def collect(domain: str, window: dict, brand: str | None = None) -> dict:
         items += found
     via = "feed"
     if not items:  # try common feed paths
-        for path in COMMON_PATHS:
-            url = base + path
+        urls = [base + path for path in COMMON_PATHS]
+        # Probe all candidate feed URLs concurrently, then walk results in list order and
+        # accept the FIRST that returned in-window items — same winner as the sequential
+        # break-on-first-hit, minus the queueing. feed_found accumulates identically
+        # (it flips True on any real feed reached before the first hit).
+        with ThreadPoolExecutor(max_workers=len(urls)) as pool:
+            probed = list(pool.map(lambda u: (u, _parse_feed(u, window)), urls))
+        for url, (ok, found) in probed:
             tried.append(url)
-            ok, found = _parse_feed(url, window)
             feed_found = feed_found or ok
             if found:
                 items += found

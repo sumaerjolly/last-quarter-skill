@@ -50,7 +50,8 @@ def _statuspage():
 
 def _sec():
     from .edgar import _sec_headers
-    c, d = fetch_json("https://www.sec.gov/files/company_tickers.json", headers=_sec_headers())
+    c, d = fetch_json("https://www.sec.gov/files/company_tickers.json",
+                      headers=_sec_headers(), timeout=20)  # ~1MB file
     ok = c == 200 and isinstance(d, dict) and len(d) > 100
     return ok, f"HTTP {c}, {len(d) if isinstance(d, dict) else 0} tickers"
 
