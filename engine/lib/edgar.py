@@ -9,6 +9,12 @@ from pathlib import Path
 from .http import fetch_json
 from .identity import norm_company
 
+# Corporate tail words allowed for the guarded fallback match ("Remitly" -> "Remitly Global").
+# DELIBERATELY EXCLUDES collision-prone tails (systems/general/financial/group/brands/
+# industries/labs) — those route common words to unrelated public filers (Mercury Systems,
+# Mercury General). Widening this set requires a new counter-test.
+_TAIL_WORDS = {"global", "holdings", "holding", "technologies", "international"}
+
 
 def _sec_headers() -> dict:
     """SEC fair-access REQUIRES 'ToolName contact@email' in the User-Agent — a UA without
@@ -80,8 +86,19 @@ def lookup_cik(name: str) -> dict | None:
     target = norm_company(name)
     if not target:
         return None
+    # Exact normalized match wins first (mercury.com still won't hit Mercury Systems).
     for v in data.values():
         if norm_company(v.get("title") or "") == target:
+            return {"cik": v["cik_str"], "ticker": v["ticker"], "title": v["title"]}
+    # Guarded fallback: target + exactly ONE allowlisted corporate tail ("Remitly" ->
+    # "Remitly Global"). Must be UNIQUE across the whole ticker file — two candidates → refuse,
+    # never guess. Min length 4 so short common words + tail aren't collision bait.
+    if len(target) >= 4:
+        wanted = {f"{target} {t}" for t in _TAIL_WORDS}
+        matches = [v for v in data.values()
+                   if norm_company(v.get("title") or "") in wanted]
+        if len(matches) == 1:
+            v = matches[0]
             return {"cik": v["cik_str"], "ticker": v["ticker"], "title": v["title"]}
     return None
 
