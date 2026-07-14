@@ -761,6 +761,27 @@ class TestWorkdayCollect(unittest.TestCase):
         self.assertEqual(sum(1 for j in board["jobs"] if j["date"]), 40)  # 5 "30+" dropped
         self.assertIn("LOWER BOUND", board["note"])
 
+    def test_dept_facets_extracted(self):
+        import lib.workday as W
+
+        def fake_post(url, payload, *, headers=None, timeout=25):
+            if payload["offset"] != 0:
+                return 200, {"total": 3, "jobPostings": []}
+            return 200, {"total": 3, "jobPostings": [
+                {"title": "Eng", "externalPath": "/job/x/R1", "locationsText": "NYC",
+                 "postedOn": "Posted 2 Days Ago"}],
+                "facets": [{"facetParameter": "jobFamilyGroup", "descriptor": "Job Category",
+                            "values": [{"descriptor": "Engineering", "count": 47},
+                                       {"descriptor": "Compliance", "count": 16}]}]}
+        orig = (W.post_json, W.fetch_json)
+        try:
+            W.post_json = fake_post
+            W.fetch_json = lambda url, **kw: (200, {"jobPostingInfo": {"jobDescription": "x"}})
+            board = W.collect("acme", "5", "Acme_Careers", _WIN)
+        finally:
+            W.post_json, W.fetch_json = orig
+        self.assertEqual(board["dept_facets"], [("Engineering", 47), ("Compliance", 16)])
+
 
 class TestBoardDiscovery(unittest.TestCase):
     def test_workday_link_and_site_hint(self):
@@ -790,6 +811,63 @@ class TestBoardDiscovery(unittest.TestCase):
         finally:
             C.fetch_text = orig
         self.assertEqual(unsup, "iCIMS")
+
+    def test_smartrecruiters_and_recruitee_links_resolve(self):
+        from lib.careers import _ATS_LINK
+        self.assertEqual(_ATS_LINK["smartrecruiters"].search(
+            "https://jobs.smartrecruiters.com/Visa/744000").group(1), "Visa")
+        self.assertEqual(_ATS_LINK["recruitee"].search(
+            "https://personio.recruitee.com/o/api-job").group(1), "personio")
+
+
+class TestNewATSParsers(unittest.TestCase):
+    def test_smartrecruiters_shape(self):
+        import lib.careers as C
+        payload = {"content": [{"name": "Staff Engineer", "id": "744",
+                                "releasedDate": "2026-06-24T10:00:11Z",
+                                "location": {"fullLocation": "Austin, TX, United States"},
+                                "department": {"label": "Engineering"}}]}
+        orig = C.fetch_json
+        try:
+            C.fetch_json = lambda url, **kw: (200, payload)
+            board = C._smartrecruiters("visa")
+        finally:
+            C.fetch_json = orig
+        self.assertEqual(board["ats"], "smartrecruiters")
+        j = board["jobs"][0]
+        self.assertEqual(j["title"], "Staff Engineer")
+        self.assertEqual(j["department"], "Engineering")
+        self.assertEqual(j["location"], "Austin, TX, United States")
+        self.assertIn("jobs.smartrecruiters.com/visa/744", j["url"])
+
+    def test_recruitee_shape_and_utc_date(self):
+        import lib.careers as C
+        payload = {"offers": [{"title": "Backend Eng", "department": "Produkt",
+                               "location": "Berlin, Germany", "careers_url": "https://x.recruitee.com/o/1",
+                               "published_at": "2026-05-02 14:19:26 UTC",
+                               "description": "<p>Python</p>", "requirements": "<p>Go</p>"}]}
+        orig = C.fetch_json
+        try:
+            C.fetch_json = lambda url, **kw: (200, payload)
+            board = C._recruitee("acme")
+        finally:
+            C.fetch_json = orig
+        j = board["jobs"][0]
+        self.assertEqual(j["title"], "Backend Eng")
+        self.assertEqual(j["department"], "Produkt")
+        self.assertEqual(j["date"], "2026-05-02 14:19:26")  # " UTC" stripped for parse_dt
+        self.assertIn("Python", j["text"])
+
+    def test_empty_returns_none(self):
+        import lib.careers as C
+        orig = C.fetch_json
+        try:
+            C.fetch_json = lambda url, **kw: (200, {"content": []})
+            self.assertIsNone(C._smartrecruiters("nobody"))
+            C.fetch_json = lambda url, **kw: (200, {"offers": []})
+            self.assertIsNone(C._recruitee("nobody"))
+        finally:
+            C.fetch_json = orig
 
 
 class TestJsonLdJobs(unittest.TestCase):

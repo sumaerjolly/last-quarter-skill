@@ -102,12 +102,60 @@ def _lever(token):
     }
 
 
-_PARSERS = {"ashby": _ashby, "greenhouse": _greenhouse, "lever": _lever}
+def _smartrecruiters(token):
+    code, data = fetch_json(
+        f"https://api.smartrecruiters.com/v1/companies/{token}/postings?limit=100")
+    posts = (data or {}).get("content") if isinstance(data, dict) else None
+    if not posts:
+        return None
+    return {
+        "ats": "smartrecruiters", "token": token,
+        "board_url": f"https://jobs.smartrecruiters.com/{token}",
+        "api_url": f"https://api.smartrecruiters.com/v1/companies/{token}/postings",
+        "jobs": [{
+            "title": p.get("name"),
+            "department": ((p.get("department") or {}).get("label")
+                           or (p.get("function") or {}).get("label")),
+            "location": (p.get("location") or {}).get("fullLocation"),
+            "url": f"https://jobs.smartrecruiters.com/{token}/{p.get('id')}",
+            "date": p.get("releasedDate"),
+            "text": None,  # full JD needs a per-posting fetch; title+dept+date drive the signal
+        } for p in posts],
+    }
+
+
+def _recruitee(token):
+    code, data = fetch_json(f"https://{token}.recruitee.com/api/offers/")
+    offers = (data or {}).get("offers") if isinstance(data, dict) else None
+    if not offers:
+        return None
+    return {
+        "ats": "recruitee", "token": token,
+        "board_url": f"https://{token}.recruitee.com",
+        "api_url": f"https://{token}.recruitee.com/api/offers/",
+        "jobs": [{
+            "title": o.get("title"),
+            "department": o.get("department"),
+            "location": o.get("location"),
+            "url": o.get("careers_url"),
+            # Recruitee stamps dates like "2025-01-02 14:19:26 UTC" — strip the suffix parse_dt
+            # can't read (fromisoformat rejects the trailing " UTC").
+            "date": (o.get("published_at") or o.get("created_at") or "").replace(" UTC", ""),
+            "text": _plain(f"{o.get('description', '')} {o.get('requirements', '')}"),
+        } for o in offers],
+    }
+
+
+_PARSERS = {"ashby": _ashby, "greenhouse": _greenhouse, "lever": _lever,
+            "smartrecruiters": _smartrecruiters, "recruitee": _recruitee}
 _ATS_LINK = {
     "ashby": re.compile(r"jobs\.ashbyhq\.com/([a-z0-9][a-z0-9-]+)", re.I),
     "greenhouse": re.compile(
         r"(?:boards|job-boards)\.greenhouse\.io/(?:embed/job_board\?for=)?([a-z0-9]+)", re.I),
     "lever": re.compile(r"jobs\.lever\.co/([a-z0-9][a-z0-9-]+)", re.I),
+    "smartrecruiters": re.compile(
+        r"(?:jobs|careers)\.smartrecruiters\.com/([a-z0-9][a-z0-9._-]+)", re.I),
+    "recruitee": re.compile(r"([a-z0-9-]+)\.recruitee\.com", re.I),
 }
 _ATS_STOP = {"embed", "job", "job_board", "www", "for"}
 
@@ -121,9 +169,7 @@ _WD_STOP = {"job", "jobs", "details", "wday", "cxs", "en", "d", "task"}
 _UNSUPPORTED_ATS = {
     "iCIMS": re.compile(r"\.icims\.com", re.I),
     "SuccessFactors": re.compile(r"successfactors\.com|sapsf\.com|/sfcareer", re.I),
-    "SmartRecruiters": re.compile(r"smartrecruiters\.com|careers\.smartrecruiters", re.I),
     "Workable": re.compile(r"apply\.workable\.com", re.I),
-    "Recruitee": re.compile(r"\.recruitee\.com", re.I),
     "Teamtailor": re.compile(r"\.teamtailor\.com", re.I),
 }
 
@@ -252,14 +298,15 @@ def _senior_roles(in_window: list[dict]) -> list[dict]:
     return out[:6]
 
 
-_ATS_PARSERS = [("ashby", _ashby), ("greenhouse", _greenhouse), ("lever", _lever)]
+_ATS_PARSERS = [("ashby", _ashby), ("greenhouse", _greenhouse), ("lever", _lever),
+                ("smartrecruiters", _smartrecruiters), ("recruitee", _recruitee)]
 
 
 def _probe_token(token: str):
-    """Probe all 3 ATSes for one token CONCURRENTLY, but select the winner by FIXED priority
-    (ashby > greenhouse > lever) — never by which finished first, so output is deterministic
-    and identical to the old sequential preference. Returns (board_or_None, tried_list)."""
-    with ThreadPoolExecutor(max_workers=3) as pool:
+    """Probe all supported ATSes for one token CONCURRENTLY, but select the winner by FIXED
+    priority (ashby > greenhouse > lever > smartrecruiters > recruitee) — never by which
+    finished first, so output is deterministic. Returns (board_or_None, tried_list)."""
+    with ThreadPoolExecutor(max_workers=len(_ATS_PARSERS)) as pool:
         futs = {pname: pool.submit(fn, token) for pname, fn in _ATS_PARSERS}
         results = {pname: fut.result() for pname, fut in futs.items()}
     tried = [f"{pname}:{token}" for pname, _ in _ATS_PARSERS]
@@ -314,6 +361,7 @@ def collect(domain: str, name: str | None, window: dict) -> dict:
     jobs = board["jobs"]
     in_window = [j for j in jobs if bucket(j["date"], window) == "in_window"]
     dept = Counter(j["department"] for j in in_window if j.get("department"))
+    dept_conc = dept.most_common(6)
     geo_rollup, geo_note = _geo_rollup(in_window)
     senior_roles = _senior_roles(in_window)
     # JD mining over ALL currently-listed roles (their live stack), zero extra fetches.
@@ -321,6 +369,12 @@ def collect(domain: str, name: str | None, window: dict) -> dict:
     base_note = ("ATS lists only currently-open roles (survivorship bias); read as "
                  "composition + freshness, not a clean growth delta. Tech stack + "
                  "priorities mined from JD text (skill-context anchored).")
+    # Workday has no per-job department in the list payload, but returns aggregate
+    # jobFamilyGroup facet counts — use them so the dept line isn't blank, labeled all-listed.
+    if not dept_conc and board.get("dept_facets"):
+        dept_conc = board["dept_facets"][:6]
+        base_note = ("Department mix is across ALL open roles (Workday facets), not just "
+                     "in-window. " + base_note)
     if board.get("note"):  # Workday lower-bound / JSON-LD caveat leads
         base_note = f"{board['note']} {base_note}"
     return {
@@ -335,7 +389,7 @@ def collect(domain: str, name: str | None, window: dict) -> dict:
         "api_url": board["api_url"],
         "listed_total": len(jobs),
         "posted_in_window": len(in_window),
-        "dept_concentration": dept.most_common(6),
+        "dept_concentration": dept_conc,
         "geo_rollup": geo_rollup,
         "geo_note": geo_note,
         "senior_roles": senior_roles,

@@ -117,6 +117,16 @@ def collect(tenant: str, wd: str, site_hint: str | None, window: dict) -> dict |
     total = int(first.get("total") or 0)
     postings = list(first.get("jobPostings") or [])
 
+    # Department rollup from the jobFamilyGroup facet (aggregate over ALL open roles — the
+    # list payload has no per-job department). careers.collect uses this when it has no
+    # per-job dept, and labels it all-listed.
+    dept_facets = []
+    for facet in first.get("facets") or []:
+        if facet.get("facetParameter") == "jobFamilyGroup":
+            dept_facets = [(v.get("descriptor"), v.get("count"))
+                           for v in (facet.get("values") or []) if v.get("descriptor")]
+            break
+
     offsets = list(range(20, min(total, _LIST_CAP), 20))
     if offsets:
         with ThreadPoolExecutor(max_workers=max(1, len(offsets))) as pool:
@@ -173,5 +183,6 @@ def collect(tenant: str, wd: str, site_hint: str | None, window: dict) -> dict |
         "board_url": f"{base}/en-US/{site}",
         "api_url": jobs_url,
         "jobs": jobs,
+        "dept_facets": dept_facets,
         "note": note,
     }
